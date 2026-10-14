@@ -199,7 +199,7 @@ def plot_3d_attractor_structure(df, length):
             v.append(0)
         return v[:3]
 
-    coords = [get_coords(row['s_vector']) for row in df['s_vector']]
+    coords = [get_coords(vec) for vec in df['s_vector']]
     coords_array = np.array(coords)
 
     fig = go.Figure(data=[go.Scatter3d(
