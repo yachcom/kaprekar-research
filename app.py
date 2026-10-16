@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Kaprekar Dynamics — единый файл
+Kaprekar Dynamics — единый файл.
 streamlit run kaprekar_dynamics.py
 """
 import streamlit as st
@@ -18,6 +18,7 @@ def K(n, k):
     s = str(n).zfill(k)
     return int(''.join(sorted(s, reverse=True))) - int(''.join(sorted(s)))
 
+
 def trajectory(n, k):
     path, seen = [n], {n: 0}
     while True:
@@ -27,15 +28,19 @@ def trajectory(n, k):
         seen[nxt] = len(path)
         path.append(nxt)
 
+
 def digits_of(n, k):
     return np.array([int(c) for c in str(n).zfill(k)])
 
+
 def d_vec(n, k):
     s = sorted(str(n).zfill(k), reverse=True)
-    return np.array([int(s[i]) - int(s[k-1-i]) for i in range(k//2)])
+    return tuple(int(s[i]) - int(s[k-1-i]) for i in range(k//2))
 
-def _ns(s):
-    return s if s <= 10 else s - 9
+
+def _ns(x):
+    return int(x) if x <= 10 else int(x) - 9
+
 
 def S_of(n, k):
     d = digits_of(n, k); m = k // 2
@@ -44,34 +49,34 @@ def S_of(n, k):
     return tuple([int(d[m])] + [_ns(d[m-i] + d[m+i]) for i in range(1, m+1)])
 
 
-# ================= ОРБИТЫ =================
-def orbit_fig(S, title=""):
-    L = len(S)
-    fig = go.Figure()
-    for r in range(1, L):
-        th = np.linspace(0, 2*np.pi, 120)
-        fig.add_trace(go.Scatter(
-            x=r*np.cos(th), y=r*np.sin(th), mode='lines',
-            line=dict(color='rgba(160,160,160,0.5)', width=1),
-            showlegend=False, hoverinfo='skip'))
-    for i, v in enumerate(S):
-        col = '#3070c0' if v == 8 else ('#d04040' if v == 10 else '#888888')
-        fig.add_trace(go.Scatter(
-            x=[0], y=[i], mode='markers+text',
-            marker=dict(size=26, color=col, line=dict(color='black', width=1.5)),
-            text=[str(v)], textposition='middle center',
-            textfont=dict(color='white', size=13),
-            showlegend=False, hoverinfo='text',
-            hovertext=f"орбита {i}: {v}"))
-    fig.update_layout(
-        xaxis=dict(visible=False, scaleanchor='y', range=[-L-0.5, L+0.5]),
-        yaxis=dict(visible=False, range=[-1, L]),
-        height=270, margin=dict(l=5, r=5, t=32, b=5),
-        title=dict(text=title, font=dict(size=11)), showlegend=False)
-    return fig
+# ================= ТАБЛИЦЫ В HTML =================
+def trajectory_table_html(path, k, ci, cyc):
+    html = ('<table style="width:100%;border-collapse:collapse;font-size:13px;">'
+            '<tr style="background:#f0f0f0;">'
+            '<th style="padding:6px;border:1px solid #ccc;">Итерация / Iter</th>'
+            '<th style="padding:6px;border:1px solid #ccc;">Число / Number</th>'
+            '<th style="padding:6px;border:1px solid #ccc;">S (центр→край) / S (center→edge)</th>'
+            '<th style="padding:6px;border:1px solid #ccc;">d-последовательность / d-sequence</th>'
+            '</tr>')
+    for i, n in enumerate(path):
+        in_cycle = i >= ci and len(cyc) > 1
+        color = 'color:#c02020;font-weight:600;' if in_cycle else ''
+        label = str(i)
+        if i == ci and len(cyc) > 1:
+            label = f"{i} (вход в цикл / cycle entry)"
+        elif i == len(path) - 1 and len(cyc) > 1 and i > ci:
+            label = f"{i} (конец цикла / cycle end)"
+        S_str = ", ".join(str(x) for x in S_of(n, k))
+        d_str = ", ".join(str(x) for x in d_vec(n, k))
+        html += (f'<tr>'
+                 f'<td style="padding:4px;border:1px solid #ccc;text-align:center;{color}">{label}</td>'
+                 f'<td style="padding:4px;border:1px solid #ccc;text-align:center;{color}">{n}</td>'
+                 f'<td style="padding:4px;border:1px solid #ccc;text-align:center;">{S_str}</td>'
+                 f'<td style="padding:4px;border:1px solid #ccc;text-align:center;">{d_str}</td>'
+                 f'</tr>')
+    return html + '</table>'
 
 
-# ================= ТАБЛИЦА РАЗНОСТЕЙ =================
 def diff_table_html(path, k):
     html = ('<table style="width:100%;border-collapse:collapse;font-family:monospace;font-size:13px;">'
             '<tr style="background:#f0f0f0;">'
@@ -79,10 +84,10 @@ def diff_table_html(path, k):
             '<th style="padding:6px;border:1px solid #ccc;">От<br>From</th>'
             '<th style="padding:6px;border:1px solid #ccc;">К<br>To</th>'
             '<th style="padding:6px;border:1px solid #ccc;">Разности цифр<br>Digit differences</th>'
-            '<th style="padding:6px;border:1px solid #ccc;">Нарушение антисимметрии<br>Antisymmetry violation</th>'
-            '<th style="padding:6px;border:1px solid #ccc;">Центр. цифры равны<br>Center digits equal</th>'
+            '<th style="padding:6px;border:1px solid #ccc;">Нарушение<br>Violation</th>'
+            '<th style="padding:6px;border:1px solid #ccc;">Центр равны<br>Center equal</th>'
             '</tr>')
-    for t in range(len(path)-1):
+    for t in range(len(path) - 1):
         a_s, b_s = str(path[t]).zfill(k), str(path[t+1]).zfill(k)
         diffs = [int(b_s[i]) - int(a_s[i]) for i in range(k)]
         viol = any(diffs[i] + diffs[k-1-i] != 0 for i in range(k))
@@ -102,19 +107,15 @@ def diff_table_html(path, k):
                  f'<td style="padding:4px;border:1px solid #ccc;text-align:center;">{path[t+1]}</td>'
                  f'<td style="padding:4px;border:1px solid #ccc;">{chips}</td>'
                  f'<td style="padding:4px;border:1px solid #ccc;text-align:center;">'
-                 f'{"⚠️" if viol else "✓"}</td>'
+                 f'{"⚠️" if viol else "—"}</td>'
                  f'<td style="padding:4px;border:1px solid #ccc;text-align:center;">'
                  f'{"✓" if ce else "—"}</td></tr>')
     return html + '</table>'
 
 
-# ================= КЭШ ПЕРЕБОРА =================
+# ================= ПЕРЕБОР КЛАССОВ =================
 @st.cache_data(show_spinner=False)
 def enumerate_classes(k):
-    """
-    Полный перебор классов эквивалентности по мультимножеству цифр.
-    Их число C(k+9, 9). Для k=9 — 48620, для k=10 — 92378.
-    """
     cycles = {}
     for combo in combinations_with_replacement(range(10), k):
         if len(set(combo)) == 1:
@@ -131,21 +132,26 @@ def enumerate_classes(k):
 # ================= UI =================
 st.title("Динамика процедуры Капрекара / Kaprekar Dynamics")
 
-t1, t2, t3 = st.tabs([
+tab1, tab2 = st.tabs([
     "1. Стабилизация и аномалии / Stabilization & anomalies",
     "2. Пространство n-значных / Space of n-digit numbers",
-    "3. Циклы и неподвижные / Cycles and fixed points",
 ])
 
 
-# ---------------- ВКЛАДКА 1 ----------------
-with t1:
+# ================== ВКЛАДКА 1 ==================
+with tab1:
     st.header("Стабилизация и аномалии / Stabilization and anomalies")
-    n0 = st.number_input("Число / Number:", value=12899850, step=1)
-    k0 = len(str(n0))
-    st.caption(f"Автоопределённая длина / Detected length: **{k0}**")
 
-    if st.button("Построить / Build", key='b1'):
+    col_in, col_btn = st.columns([4, 1])
+    with col_in:
+        n0 = st.number_input("Число / Number:", value=12899850, step=1, key='n0_in')
+    with col_btn:
+        st.write("")
+        st.write("")
+        build1 = st.button("Построить / Build", key='b1', use_container_width=True)
+
+    if build1:
+        k0 = len(str(n0))
         path, ci, cyc = trajectory(n0, k0)
 
         c1, c2, c3 = st.columns(3)
@@ -161,100 +167,100 @@ with t1:
             st.code(str(cyc[0]))
 
         st.subheader("Траектория / Trajectory")
-        rows = []
-        for i, n in enumerate(path):
-            stage = "старт" if i == 0 else (
-                "вход в цикл" if i == ci else (
-                    "в цикле" if i > ci else "переход"))
-            rows.append({
-                "Итерация / Iter": i,
-                "Число / Number": n,
-                "S (центр→край) / S (center→edge)": str(S_of(n, k0)),
-                "d-последовательность / d-sequence": str(tuple(int(x) for x in d_vec(n, k0))),
-                "Стадия / Stage": stage,
-            })
-        st.dataframe(pd.DataFrame(rows), use_container_width=True)
-
-        st.subheader("Орбиты S: как из центра собираются суммы / Orbits of S")
         st.caption(
-            "Концентрические окружности — орбиты. Внутри — суммы от центра числа, снаружи — "
-            "крайние пары. Цвет: синий = 8, красный = 10, серый = 9. "
-            "На устойчивом состоянии видно: 8 у центра, 10 на краю.\n\n"
-            "Concentric rings are orbits. Innermost = sums near center, outermost = extreme pair. "
-            "Color: blue = 8, red = 10, gray = 9."
+            "**S (центр→край)** — суммы пар цифр, симметричных относительно центра числа: "
+            "Sⱼ = aⱼ + a_{k+1−j}, где a₁…aₖ — цифры числа по порядку. Первое значение — "
+            "центральная пара, последнее — крайняя.\n\n"
+            "**d-последовательность** — симметричные разности убывающих цифр: dᵢ = xᵢ − x_{k+1−i}, "
+            "где x₁ ≥ x₂ ≥ … ≥ xₖ. Длина = ⌊k/2⌋.\n\n"
+            "**S** — sums of symmetric digit pairs. **d** — symmetric differences of "
+            "descending digits."
         )
-        for start in range(0, len(path), 4):
-            cols = st.columns(4)
-            for j, col in enumerate(cols):
-                idx = start + j
-                if idx >= len(path):
-                    break
-                n = path[idx]
-                tag = " [Ц]" if idx >= ci else ""
-                with col:
-                    st.plotly_chart(
-                        orbit_fig(S_of(n, k0), f"итер.{idx}: {n}{tag}"),
-                        use_container_width=True)
+        st.markdown(trajectory_table_html(path, k0, ci, cyc), unsafe_allow_html=True)
 
-        st.subheader("3D-антисимметрия разностей / 3D antisymmetry of differences")
+        st.subheader("Таблица разностей / Difference table")
         st.caption(
-            "Каждая точка: (Δᵢ + Δ_{k+1−i}) для симметричной пары позиций, на данной итерации. "
-            "z = 0 → антисимметрия выполнена. z ≠ 0 → нарушение.\n\n"
-            "Each point: sum of symmetric differences. z = 0 → antisymmetry holds. z ≠ 0 → violation."
+            "Δᵢ = aᵢ(t+1) − aᵢ(t) — поразрядная разность между соседними итерациями. "
+            "**⚠️** — антисимметрия нарушена (Δᵢ + Δ_{k+1−i} ≠ 0). **—** — антисимметрия соблюдена. "
+            "**Центр равны** — флаг, что в предыдущей итерации центральные цифры совпадали.\n\n"
+            "Δᵢ — digit-by-digit difference between consecutive iterations."
         )
-        xs, ys, zs, colors = [], [], [], []
-        for t in range(len(path)-1):
+        st.markdown(diff_table_html(path, k0), unsafe_allow_html=True)
+
+        st.subheader("3D-динамика разностей / 3D dynamics of differences")
+        st.caption(
+            "Каждый горизонтальный слой — одна итерация (переход t → t+1). По X — позиция цифры. "
+            "По Z — значение Δᵢ. Цвет точки: красный — Δᵢ < 0, зелёный — Δᵢ > 0, серый — 0. "
+            "Вертикальные серые линии соединяют одну и ту же позицию между итерациями — "
+            "показывают «траекторию» каждой позиции во времени.\n\n"
+            "Each layer is one iteration. X — digit position, Z — Δᵢ. "
+            "Vertical grey lines connect the same position across iterations."
+        )
+        fig3 = go.Figure()
+        diffs_all = []
+        for t in range(len(path) - 1):
             a = digits_of(path[t], k0)
             b = digits_of(path[t+1], k0)
             diffs = b - a
-            for i in range(k0 // 2):
-                s = int(diffs[i] + diffs[k0-1-i])
-                xs.append(i)
-                ys.append(t)
-                zs.append(s)
-                colors.append('#d04040' if s != 0 else '#3070c0')
-        fig3 = go.Figure(go.Scatter3d(
-            x=xs, y=ys, z=zs, mode='markers',
-            marker=dict(size=7, color=colors, opacity=0.85),
-            text=[f"пара {x}, итер {y}, сумма Δ={z}" for x, y, z in zip(xs, ys, zs)],
-            hoverinfo='text'))
+            diffs_all.append(diffs)
+
+        # вертикальные трассы по позициям
+        for i in range(k0):
+            zs = [int(diffs_all[t][i]) for t in range(len(diffs_all))]
+            fig3.add_trace(go.Scatter3d(
+                x=[i]*len(zs), y=list(range(len(zs))), z=zs,
+                mode='lines',
+                line=dict(color='rgba(150,150,150,0.35)', width=2),
+                showlegend=False, hoverinfo='skip'))
+
+        # горизонтальные профили по итерациям
+        for t, diffs in enumerate(diffs_all):
+            colors = ['#d04040' if d < 0 else ('#30a030' if d > 0 else '#808080')
+                      for d in diffs]
+            fig3.add_trace(go.Scatter3d(
+                x=list(range(k0)), y=[t]*k0, z=[int(d) for d in diffs],
+                mode='lines+markers',
+                line=dict(color='rgba(90,90,90,0.6)', width=3),
+                marker=dict(size=8, color=colors, line=dict(color='black', width=1)),
+                text=[f"итер {t}→{t+1}, поз {i+1}, Δ={int(d):+d}"
+                      for i, d in enumerate(diffs)],
+                hoverinfo='text', showlegend=False))
+
         fig3.update_layout(
-            scene=dict(xaxis_title='Позиция пары от центра / Pair pos',
-                       yaxis_title='Итерация / Iter',
-                       zaxis_title='Δᵢ + Δ_{k+1−i}'),
-            height=600, margin=dict(l=0, r=0, t=10, b=0))
+            scene=dict(
+                xaxis_title='Позиция / Position',
+                yaxis_title='Итерация / Iteration',
+                zaxis_title='Δᵢ'),
+            height=680, margin=dict(l=0, r=0, t=10, b=0))
         st.plotly_chart(fig3, use_container_width=True)
 
-        st.subheader("Таблица разностей / Difference table")
-        st.markdown(diff_table_html(path, k0), unsafe_allow_html=True)
 
-
-# ---------------- ВКЛАДКА 2 ----------------
-with t2:
+# ================== ВКЛАДКА 2 ==================
+with tab2:
     st.header("Пространство n-значных чисел / Space of n-digit numbers")
     st.caption(
         "Каждая точка — **класс эквивалентности по мультимножеству цифр**. "
-        "K(n) зависит только от мультимножества, поэтому перебираются все классы, а не все 10^k чисел.\n\n"
-        "Число классов = C(k+9, 9). Для k=9: **C(18, 9) = 48 620**. Для k=10: **C(19, 9) = 92 378**. "
-        "Один класс — все числа с одинаковым набором цифр (например, класс {0,1,2,3} содержит 4! = 24 числа).\n\n"
-        "Each point is an **equivalence class by multiset of digits**. The number of classes is C(k+9, 9)."
+        "K(n) зависит только от набора цифр, а не от их порядка. "
+        "Класс {0,1,2,3} содержит 4! = 24 числа, но все они дают один и тот же K(n). "
+        "Число классов = C(k+9, 9).\n\n"
+        "Each point is an **equivalence class by multiset of digits**. "
+        "Number of classes = C(k+9, 9)."
     )
 
     c1, c2 = st.columns(2)
     with c1:
-        k2 = st.slider("Длина числа / Number length:", 3, 10, 6, key='s3k')
+        k2 = st.slider("Длина числа / Number length:", 3, 10, 6, key='k2')
         n_classes = comb(k2 + 9, 9)
-        st.info(f"Классов при полном переборе: **{n_classes:,}** / Classes: **{n_classes:,}**")
+        st.info(f"Классов при полном переборе / Classes: **{n_classes:,}**")
     with c2:
         hl = st.number_input(
-            "Трассируемое число / Trace number (0 = не показывать / 0 = hide):",
-            value=0, step=1, key='s3h')
-        if hl > 0:
-            hl_str = str(hl).zfill(k2)
-            st.caption(f"Будет отрисован путь числа **{hl_str}** в d-пространстве. "
-                       f"Если цифр меньше {k2}, число дополняется ведущими нулями.")
+            f"Трассируемое число ({k2} цифр) / Trace number ({k2} digits):",
+            value=0, step=1, key='hl')
+        if hl > 0 and len(str(hl)) != k2:
+            st.warning(f"Введите число ровно из {k2} цифр (с ведущими нулями). "
+                       f"Введено цифр: {len(str(hl))}.")
 
-    if st.button("Построить / Build", key='b3'):
+    if st.button("Построить / Build", key='b2'):
         with st.spinner("Перебор классов / Enumerating classes..."):
             cycles = enumerate_classes(k2)
             attn = {c: i for i, c in enumerate(cycles.keys())}
@@ -264,29 +270,62 @@ with t2:
                 if len(set(combo)) == 1:
                     continue
                 n = int(''.join(str(x) for x in sorted(combo, reverse=True)))
-                path, ci, cyc = trajectory(n, k2)
                 d = list(d_vec(n, k2)[:3])
                 d += [0] * (3 - len(d))
+                path, ci, cyc = trajectory(n, k2)
                 canon = tuple(sorted(cyc))[0]
                 xs.append(d[0]); ys.append(d[1]); zs.append(d[2])
                 colors.append(attn[canon])
-                texts.append(f"n={n}<br>цикл={canon}<br>длина={len(cyc)}")
+                texts.append(f"класс n={n}<br>цикл={canon}<br>длина={len(cyc)}")
 
+        st.subheader("Циклы и неподвижные числа / Cycles and fixed points")
+        total = sum(info['count'] for info in cycles.values())
+        rows = []
+        for info in sorted(cycles.values(), key=lambda x: -x['count']):
+            cyc = info['cycle']
+            rows.append({
+                "Тип / Type": "неподвижная / fixed" if len(cyc) == 1
+                              else f"цикл длины {len(cyc)} / {len(cyc)}-cycle",
+                "Цикл (полностью) / Cycle (full)":
+                    " → ".join(str(x) for x in cyc)
+                    + (" → " + str(cyc[0]) if len(cyc) > 1 else ""),
+                "Классов / Classes": info['count'],
+                "Доля / Share": f"{info['count'] / total * 100:.2f}%",
+            })
+        st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+
+        st.subheader("3D-пространство / 3D space")
         fig = go.Figure(go.Scatter3d(
             x=xs, y=ys, z=zs, mode='markers',
             marker=dict(size=3, color=colors, colorscale='Turbo',
                         opacity=0.55, colorbar=dict(title="аттрактор")),
-            text=texts, hoverinfo='text'))
+            text=texts, hoverinfo='text', name='классы'))
 
-        if hl > 0 and len(str(hl)) <= k2:
+        if hl > 0 and len(str(hl)) == k2:
             path, ci, cyc = trajectory(hl, k2)
-            dpath = [list(d_vec(n, k2)[:3]) + [0]*(3-len(d_vec(n, k2)[:3])) for n in path]
-            fig.add_trace(go.Scatter3d(
-                x=[p[0] for p in dpath], y=[p[1] for p in dpath], z=[p[2] for p in dpath],
-                mode='lines+markers',
-                line=dict(color='black', width=6),
-                marker=dict(size=6, color='black'),
-                name=f"путь {hl}"))
+            pts = []
+            for t, n in enumerate(path):
+                d = list(d_vec(n, k2)[:3]) + [0]*(3-len(d_vec(n, k2)[:3]))
+                pts.append((d[0], d[1], d[2], t, n))
+            pre = [p for p in pts if p[3] < ci] + ([pts[ci]] if ci < len(pts) else [])
+            cyc_pts = [p for p in pts if p[3] >= ci]
+            if pre:
+                fig.add_trace(go.Scatter3d(
+                    x=[p[0] for p in pre], y=[p[1] for p in pre], z=[p[2] for p in pre],
+                    mode='lines+markers',
+                    line=dict(color='orange', width=5),
+                    marker=dict(size=6, color='orange', line=dict(color='black', width=1)),
+                    text=[f"итер {p[3]}: {p[4]}" for p in pre],
+                    hoverinfo='text', name='путь до цикла'))
+            if cyc_pts:
+                fig.add_trace(go.Scatter3d(
+                    x=[p[0] for p in cyc_pts], y=[p[1] for p in cyc_pts],
+                    z=[p[2] for p in cyc_pts],
+                    mode='lines+markers',
+                    line=dict(color='red', width=8),
+                    marker=dict(size=9, color='red', line=dict(color='black', width=1)),
+                    text=[f"итер {p[3]}: {p[4]}" for p in cyc_pts],
+                    hoverinfo='text', name='цикл'))
 
         fig.update_layout(
             height=750,
@@ -296,41 +335,7 @@ with t2:
 
         st.info(
             "**Почему пирамида?** Точки удовлетворяют d₁ ≥ d₂ ≥ d₃ ≥ 0 — это математическое "
-            "ограничение на симметричные разности, а не артефакт кода. Для k=3 (только d₁) — "
-            "линия; для k=4,5 (d₁,d₂) — плоский треугольник; для k≥6 (d₁,d₂,d₃) — пирамида.\n\n"
-            "**Why a pyramid?** The constraint d₁ ≥ d₂ ≥ d₃ ≥ 0 is mathematical, not a code artefact."
+            "следствие того, что dᵢ — разности убывающих цифр. Для k=3 (только d₁) — линия; "
+            "для k=4,5 (d₁, d₂) — плоский треугольник; для k≥6 (d₁, d₂, d₃) — пирамида.\n\n"
+            "**Why pyramid?** The constraint d₁ ≥ d₂ ≥ d₃ ≥ 0 is a mathematical consequence."
         )
-
-        st.subheader("Аттракторы / Attractors")
-        tbl = pd.DataFrame([
-            {"Цикл / Cycle": " → ".join(str(x) for x in info['cycle']),
-             "Длина / Length": len(info['cycle']),
-             "Классов / Classes": info['count'],
-             "Доля / Share": f"{info['count'] / sum(v['count'] for v in cycles.values()) * 100:.2f}%"}
-            for info in sorted(cycles.values(), key=lambda x: -x['count'])
-        ])
-        st.dataframe(tbl, use_container_width=True)
-
-
-# ---------------- ВКЛАДКА 3 ----------------
-with t3:
-    st.header("Циклы и неподвижные точки / Cycles and fixed points")
-    st.caption("Полный перебор классов эквивалентности. Циклы выписаны целиком.")
-    k3 = st.slider("Длина числа / Number length:", 3, 10, 6, key='s4k')
-
-    if st.button("Перебрать / Enumerate", key='b4'):
-        with st.spinner("Перебор / Enumerating..."):
-            cycles = enumerate_classes(k3)
-            total = sum(v['count'] for v in cycles.values())
-            rows = []
-            for info in sorted(cycles.values(), key=lambda x: -x['count']):
-                cyc = info['cycle']
-                rows.append({
-                    "Тип / Type": "неподвижная / fixed" if len(cyc) == 1
-                                  else f"цикл длины {len(cyc)} / {len(cyc)}-cycle",
-                    "Цикл (полностью) / Cycle (full)":
-                        " → ".join(str(x) for x in cyc) + (" → " + str(cyc[0]) if len(cyc) > 1 else ""),
-                    "Классов / Classes": info['count'],
-                    "Доля / Share": f"{info['count'] / total * 100:.2f}%",
-                })
-            st.dataframe(pd.DataFrame(rows), use_container_width=True)
