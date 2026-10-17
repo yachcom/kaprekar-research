@@ -156,72 +156,79 @@ with tab1:
         st.subheader("Таблица разностей / Difference table")
         st.markdown(diff_table_html(path, k0), unsafe_allow_html=True)
 
-        st.subheader("3D-связи: Числа и их разности / 3D Connections: Numbers and their Differences")
+        st.subheader("3D-волновой фронт разностей / 3D Difference Wave Front")
         st.caption(
-            "Ось X — позиция цифры, Y — итерация, Z — значение цифры (0-9). "
-            "Поверхность показывает сами числа (родительская процедура). "
-            "Векторы (стрелки) показывают переход цифры на следующую итерацию — это и есть те самые 'разности' (дочерняя процедура). "
-            "Если вектор идет вверх (зеленый) — разность положительная. Если вниз (красный) — отрицательная. "
-            "В местах, где поверхность резко изламывается (заимствования), вы увидите, как векторы меняют направление."
+            "Ось X — позиция цифры, Y — итерация, Z — **значение разности**. "
+            "Центральная прозрачная плоскость — это ноль (Z=0). "
+            "Красные линии уходят в минус (цифра уменьшилась), зелёные — в плюс (цифра выросла). "
+            "Соединительные линии показывают, как 'заряд' перетекает от итерации к итерации. "
+            "Вы увидите, как левая половина (минус) и правая половина (плюс) образуют антисимметричные волны, "
+            "и как при сломе симметрии (например, на 4-й итерации) красные и зеленые волны начинают смешиваться."
         )
         
-        # 1. Подготовка данных (цифры и разности)
-        Z_digits = np.array([digits_of(n, k0) for n in path])
-        iterations = np.arange(len(path))
-        positions = np.arange(k0)
+        # Считаем разности для всех шагов
+        Z_diffs = []
+        for t in range(len(path) - 1):
+            a = digits_of(path[t], k0)
+            b = digits_of(path[t+1], k0)
+            Z_diffs.append(b - a)
+        Z_diffs = np.array(Z_diffs)
         
         fig3 = go.Figure()
         
-        # 2. Поверхность: сами числа по итерациям
+        # 1. Прозрачная плоскость нуля (Зеркало антисимметрии)
+        x_plane = [0, k0-1, k0-1, 0]
+        y_plane = [0, 0, len(path)-2, len(path)-2]
+        z_plane = [0, 0, 0, 0]
         fig3.add_trace(go.Surface(
-            x=positions, 
-            y=iterations, 
-            z=Z_digits,
-            colorscale='Blues', 
-            opacity=0.5,
-            showscale=False,
-            name='Числа / Numbers'
+            x=[np.arange(k0), np.arange(k0)],
+            y=[[0]*k0, [len(path)-2]*k0],
+            z=[[0]*k0, [0]*k0],
+            showscale=False, opacity=0.15, colorscale=[[0, 'gray'], [1, 'gray']],
+            hoverinfo='skip', showlegend=False
         ))
         
-        # 3. Векторы: разности между итерациями
-        for t in range(len(path) - 1):
-            a = Z_digits[t]
-            b = Z_digits[t+1]
-            diffs = b - a
-            
-            # Координаты начал векторов (x, y, z) и смещения (u, v, w)
-            x_vals = positions
-            y_vals = np.full(k0, t)
-            z_vals = a
-            
-            u_vals = np.zeros(k0)      # смещение по X
-            v_vals = np.ones(k0)       # смещение по Y (время)
-            w_vals = diffs             # смещение по Z (это и есть разность)
-            
-            # Цвет вектора: красный (минус), зеленый (плюс), серый (ноль)
-            colors = ['rgb(208, 64, 64)' if w < 0 else ('rgb(48, 160, 48)' if w > 0 else 'rgb(128, 128, 128)') for w in w_vals]
-            
-            fig3.add_trace(go.Cone(
-                x=x_vals, 
-                y=y_vals, 
-                z=z_vals,
-                u=u_vals, 
-                v=v_vals, 
-                w=w_vals,
-                colorscale=[[0, 'rgb(208, 64, 64)'], [1, 'rgb(48, 160, 48)']],
-                sizemode='absolute',
-                sizeref=0.8,
-                anchor='tail',
-                showscale=False,
+        # 2. Рисуем волны
+        for t in range(len(Z_diffs)):
+            # Линия вдоль позиций (профиль одной итерации)
+            colors = ['#d04040' if v < 0 else ('#30a030' if v > 0 else '#808080') for v in Z_diffs[t]]
+            fig3.add_trace(go.Scatter3d(
+                x=list(range(k0)), y=[t]*k0, z=Z_diffs[t],
+                mode='lines+markers',
+                line=dict(color='rgba(80,80,80,0.3)', width=2),
+                marker=dict(size=6, color=colors, line=dict(color='black', width=1)),
+                text=[f"Поз {i}: {v:+d}" for i, v in enumerate(Z_diffs[t])],
                 hoverinfo='text',
-                text=[f"Итер {t} -> {t+1}<br>Поз {i}<br>Было: {a[i]}<br>Стало: {b[i]}<br>Разность: {d:+d}" for i, d in enumerate(diffs)]
+                name=f"Итерация {t}"
             ))
+            
+            # Вертикальные линии связи (как меняется позиция от итерации к итерации)
+            if t < len(Z_diffs) - 1:
+                for i in range(k0):
+                    z_start = Z_diffs[t][i]
+                    z_end = Z_diffs[t+1][i]
+                    # Цвет соединительной линии зависит от того, куда движется разность
+                    if z_end > z_start:
+                        line_color = '#30a030' # Рост разности (в сторону плюса)
+                    elif z_end < z_start:
+                        line_color = '#d04040' # Падение разности (в сторону минуса)
+                    else:
+                        line_color = '#808080'
+                        
+                    fig3.add_trace(go.Scatter3d(
+                        x=[i, i], y=[t, t+1], z=[z_start, z_end],
+                        mode='lines',
+                        line=dict(color=line_color, width=4),
+                        showlegend=False, hoverinfo='skip'
+                    ))
 
         fig3.update_layout(
             scene=dict(
                 xaxis_title='Позиция цифры / Digit Position',
                 yaxis_title='Итерация / Iteration',
-                zaxis_title='Значение цифры / Digit Value'
+                zaxis_title='Разность (Δ) / Difference (Δ)',
+                zaxis=dict(range=[-9, 9]), # Фиксируем ось Z от -9 до +9
+                camera=dict(eye=dict(x=1.5, y=-1.5, z=0.8))
             ),
             height=750, margin=dict(l=0, r=0, t=10, b=0)
         )
