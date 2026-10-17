@@ -158,12 +158,10 @@ with tab1:
 
         st.subheader("3D-волновой фронт разностей / 3D Difference Wave Front")
         st.caption(
-            "Ось X — позиция цифры, Y — итерация, Z — **значение разности**. "
-            "Центральная прозрачная плоскость — это ноль (Z=0). "
-            "Красные линии уходят в минус (цифра уменьшилась), зелёные — в плюс (цифра выросла). "
-            "Соединительные линии показывают, как 'заряд' перетекает от итерации к итерации. "
-            "Вы увидите, как левая половина (минус) и правая половина (плюс) образуют антисимметричные волны, "
-            "и как при сломе симметрии (например, на 4-й итерации) красные и зеленые волны начинают смешиваться."
+            "Ось X — позиция цифры (центр числа = 0). Y — итерация. Z — разность. "
+            "Вы видите **единый, непрерывный волновой ландшафт**. Красная зона — цифра уменьшилась (минус), "
+            "синяя — цифра выросла (плюс). В норме левая часть (минус) и правая (плюс) образуют симметричные склоны. "
+            "Когда происходит заимствование (слом), поверхность резко изгибается, и вы видите, как волна меняет направление."
         )
         
         # Считаем разности для всех шагов
@@ -174,60 +172,53 @@ with tab1:
             Z_diffs.append(b - a)
         Z_diffs = np.array(Z_diffs)
         
+        # Центрируем ось X, чтобы 0 был посередине
+        x_positions = np.arange(k0) - (k0 - 1) / 2
+        y_iterations = np.arange(len(Z_diffs))
+        
         fig3 = go.Figure()
         
-        # 1. Прозрачная плоскость нуля (Зеркало антисимметрии)
-        x_plane = [0, k0-1, k0-1, 0]
-        y_plane = [0, 0, len(path)-2, len(path)-2]
-        z_plane = [0, 0, 0, 0]
+        # 1. Поверхность (единый волновой фронт)
         fig3.add_trace(go.Surface(
-            x=[np.arange(k0), np.arange(k0)],
-            y=[[0]*k0, [len(path)-2]*k0],
-            z=[[0]*k0, [0]*k0],
-            showscale=False, opacity=0.15, colorscale=[[0, 'gray'], [1, 'gray']],
-            hoverinfo='skip', showlegend=False
+            x=x_positions,
+            y=y_iterations,
+            z=Z_diffs,
+            colorscale='RdBu', # Красный для минуса, синий для плюса
+            cmid=0, # Центр цветовой шкалы на нуле
+            opacity=0.85,
+            contours=dict(
+                z=dict(show=True, usecolormap=True, highlightcolor="#444444", project=dict(z=True))
+            ),
+            colorbar=dict(title="Разность (Δ)")
         ))
         
-        # 2. Рисуем волны
-        for t in range(len(Z_diffs)):
-            # Линия вдоль позиций (профиль одной итерации)
-            colors = ['#d04040' if v < 0 else ('#30a030' if v > 0 else '#808080') for v in Z_diffs[t]]
+        # 2. Сетка (чтобы были видны конкретные связи)
+        # Горизонтальные линии (значения разностей в каждой итерации)
+        for t in y_iterations:
             fig3.add_trace(go.Scatter3d(
-                x=list(range(k0)), y=[t]*k0, z=Z_diffs[t],
+                x=x_positions, y=[t]*k0, z=Z_diffs[t],
                 mode='lines+markers',
-                line=dict(color='rgba(80,80,80,0.3)', width=2),
-                marker=dict(size=6, color=colors, line=dict(color='black', width=1)),
-                text=[f"Поз {i}: {v:+d}" for i, v in enumerate(Z_diffs[t])],
-                hoverinfo='text',
-                name=f"Итерация {t}"
+                line=dict(color='black', width=2),
+                marker=dict(size=4, color='black'),
+                showlegend=False, hoverinfo='skip'
             ))
             
-            # Вертикальные линии связи (как меняется позиция от итерации к итерации)
-            if t < len(Z_diffs) - 1:
-                for i in range(k0):
-                    z_start = Z_diffs[t][i]
-                    z_end = Z_diffs[t+1][i]
-                    # Цвет соединительной линии зависит от того, куда движется разность
-                    if z_end > z_start:
-                        line_color = '#30a030' # Рост разности (в сторону плюса)
-                    elif z_end < z_start:
-                        line_color = '#d04040' # Падение разности (в сторону минуса)
-                    else:
-                        line_color = '#808080'
-                        
-                    fig3.add_trace(go.Scatter3d(
-                        x=[i, i], y=[t, t+1], z=[z_start, z_end],
-                        mode='lines',
-                        line=dict(color=line_color, width=4),
-                        showlegend=False, hoverinfo='skip'
-                    ))
+        # Вертикальные линии (связь одной позиции между итерациями)
+        for i in range(k0):
+            z_vals = [Z_diffs[t][i] for t in y_iterations]
+            fig3.add_trace(go.Scatter3d(
+                x=[x_positions[i]]*len(y_iterations), y=y_iterations, z=z_vals,
+                mode='lines',
+                line=dict(color='black', width=2, dash='dot'),
+                showlegend=False, hoverinfo='skip'
+            ))
 
         fig3.update_layout(
             scene=dict(
-                xaxis_title='Позиция цифры / Digit Position',
+                xaxis_title='Позиция от центра / Position from center',
                 yaxis_title='Итерация / Iteration',
                 zaxis_title='Разность (Δ) / Difference (Δ)',
-                zaxis=dict(range=[-9, 9]), # Фиксируем ось Z от -9 до +9
+                zaxis=dict(range=[-9, 9]), 
                 camera=dict(eye=dict(x=1.5, y=-1.5, z=0.8))
             ),
             height=750, margin=dict(l=0, r=0, t=10, b=0)
