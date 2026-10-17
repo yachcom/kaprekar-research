@@ -320,5 +320,4 @@ with tab3:
             scene=dict(xaxis_title='Итерация', yaxis_title='Позиция d', zaxis_title='Значение d'),
             height=700
         )
-        st.plotly_chart(fig, use_container_width=True)₂ ≥ d₃ ≥ 0 is a mathematical consequence."
-        )
+        st.plotly_chart(fig, use_container_width=True)
