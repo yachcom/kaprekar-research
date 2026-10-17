@@ -128,7 +128,7 @@ with tab1:
 
     col_in, col_btn = st.columns([4, 1])
     with col_in:
-        n0 = st.number_input("Число / Number:", value=74943, step=1, key='n0_in')
+        n0 = st.number_input("Число / Number:", value=12899850, step=1, key='n0_in')
     with col_btn:
         st.write("")
         st.write("")
@@ -145,64 +145,87 @@ with tab1:
 
         if len(cyc) > 1:
             st.subheader("Полный цикл / Full cycle")
-            st.code(" → ".join(str(x) for x in cyc) + " → " + str(cyc[0]))
+            st.code(" -> ".join(str(x) for x in cyc) + " -> " + str(cyc[0]))
         else:
             st.subheader("Неподвижная точка / Fixed point")
             st.code(str(cyc[0]))
 
         st.subheader("Траектория / Trajectory")
-        with st.expander("Что такое d-последовательность? / What is d-sequence?", expanded=False):
-            st.markdown(
-                "**d-последовательность** — это симметричные разности цифр, отсортированных по убыванию.\n\n"
-                "Пример для числа **74943**:\n"
-                "1. Сортируем цифры по убыванию: `9, 7, 4, 4, 3`.\n"
-                "2. Считаем разности пар от краёв к центру:\n"
-                "   - d₁ = 9 − 3 = **6** (первая цифра минус последняя)\n"
-                "   - d₂ = 7 − 4 = **3** (вторая цифра минус предпоследняя)\n"
-                "3. Получаем d = `(6, 3)`.\n\n"
-                "**Зачем это нужно?** При вычислении K(n) мы вычитаем `34479` из `97443`. "
-                "Разности d₁ и d₂ — это максимальные разности на этих позициях до заимствований. "
-                "Они определяют структуру результата."
-            )
         st.markdown(trajectory_table_html(path, k0, ci, cyc), unsafe_allow_html=True)
 
         st.subheader("Таблица разностей / Difference table")
         st.markdown(diff_table_html(path, k0), unsafe_allow_html=True)
 
-        st.subheader("3D-поток разностей / 3D flow of differences")
+        st.subheader("3D-связи: Числа и их разности / 3D Connections: Numbers and their Differences")
         st.caption(
-            "По X — позиция цифры. По Y — итерация. По Z — значение Δᵢ (разность между итерациями). "
-            "Цветные линии соединяют значения **одной и той же позиции** на соседних итерациях. "
-            "Красные — Δᵢ < 0, зелёные — Δᵢ > 0, серые — 0. Видно, как «волна» разности течёт во времени.\n\n"
-            "Colored lines connect the same position across iterations."
+            "Ось X — позиция цифры, Y — итерация, Z — значение цифры (0-9). "
+            "Поверхность показывает сами числа (родительская процедура). "
+            "Векторы (стрелки) показывают переход цифры на следующую итерацию — это и есть те самые 'разности' (дочерняя процедура). "
+            "Если вектор идет вверх (зеленый) — разность положительная. Если вниз (красный) — отрицательная. "
+            "В местах, где поверхность резко изламывается (заимствования), вы увидите, как векторы меняют направление."
         )
+        
+        # 1. Подготовка данных (цифры и разности)
+        Z_digits = np.array([digits_of(n, k0) for n in path])
+        iterations = np.arange(len(path))
+        positions = np.arange(k0)
+        
         fig3 = go.Figure()
-        diffs_all = []
+        
+        # 2. Поверхность: сами числа по итерациям
+        fig3.add_trace(go.Surface(
+            x=positions, 
+            y=iterations, 
+            z=Z_digits,
+            colorscale='Blues', 
+            opacity=0.5,
+            showscale=False,
+            name='Числа / Numbers'
+        ))
+        
+        # 3. Векторы: разности между итерациями
         for t in range(len(path) - 1):
-            a = digits_of(path[t], k0)
-            b = digits_of(path[t+1], k0)
-            diffs_all.append(b - a)
-
-        # Линии, соединяющие одну позицию во времени
-        for i in range(k0):
-            zs = [int(diffs_all[t][i]) for t in range(len(diffs_all))]
-            for t in range(len(zs)-1):
-                col = '#d04040' if zs[t] < 0 else ('#30a030' if zs[t] > 0 else '#808080')
-                fig3.add_trace(go.Scatter3d(
-                    x=[i, i], y=[t, t+1], z=[zs[t], zs[t+1]],
-                    mode='lines+markers',
-                    line=dict(color=col, width=4),
-                    marker=dict(size=5, color=col),
-                    showlegend=False, hoverinfo='skip'))
+            a = Z_digits[t]
+            b = Z_digits[t+1]
+            diffs = b - a
+            
+            # Координаты начал векторов (x, y, z) и смещения (u, v, w)
+            x_vals = positions
+            y_vals = np.full(k0, t)
+            z_vals = a
+            
+            u_vals = np.zeros(k0)      # смещение по X
+            v_vals = np.ones(k0)       # смещение по Y (время)
+            w_vals = diffs             # смещение по Z (это и есть разность)
+            
+            # Цвет вектора: красный (минус), зеленый (плюс), серый (ноль)
+            colors = ['rgb(208, 64, 64)' if w < 0 else ('rgb(48, 160, 48)' if w > 0 else 'rgb(128, 128, 128)') for w in w_vals]
+            
+            fig3.add_trace(go.Cone(
+                x=x_vals, 
+                y=y_vals, 
+                z=z_vals,
+                u=u_vals, 
+                v=v_vals, 
+                w=w_vals,
+                colorscale=[[0, 'rgb(208, 64, 64)'], [1, 'rgb(48, 160, 48)']],
+                sizemode='absolute',
+                sizeref=0.8,
+                anchor='tail',
+                showscale=False,
+                hoverinfo='text',
+                text=[f"Итер {t} -> {t+1}<br>Поз {i}<br>Было: {a[i]}<br>Стало: {b[i]}<br>Разность: {d:+d}" for i, d in enumerate(diffs)]
+            ))
 
         fig3.update_layout(
             scene=dict(
-                xaxis_title='Позиция / Position',
+                xaxis_title='Позиция цифры / Digit Position',
                 yaxis_title='Итерация / Iteration',
-                zaxis_title='Δᵢ'),
-            height=680, margin=dict(l=0, r=0, t=10, b=0))
+                zaxis_title='Значение цифры / Digit Value'
+            ),
+            height=750, margin=dict(l=0, r=0, t=10, b=0)
+        )
         st.plotly_chart(fig3, use_container_width=True)
-
 # ================== ВКЛАДКА 2 ==================
 with tab2:
     st.header("Пространство n-значных чисел / Space of n-digit numbers")
