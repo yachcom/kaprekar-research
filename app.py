@@ -158,83 +158,141 @@ with tab1:
 
         st.subheader("3D-динамика разностей / 3D Dynamics of Differences")
         
-        # --- ПЕРЕКЛЮЧАТЕЛЬ РЕЖИМОВ ---
-        mode = st.radio(
-            "Режим отображения / Display mode:",
-            ("Гибрид (Поле + Линии)", "Только поле (Surface)", "Только линии (Lines)"),
-            horizontal=True
-        )
+        col_switch1, col_switch2 = st.columns(2)
+        with col_switch1:
+            mode = st.radio(
+                "Режим отображения / Display mode:",
+                ("Гибрид (Поле + Линии)", "Только поле (Surface)", "Только линии (Lines)"),
+                horizontal=True, key='mode3d'
+            )
+        with col_switch2:
+            if len(cyc) > 1:
+                cycle_view = st.checkbox("Визуализировать замыкание цикла (Орбита)", value=False)
+            else:
+                cycle_view = False
+                st.write("")
 
-        st.caption(
-            "Ось X — позиция цифры (центр числа = 0). Y — итерация. Z — разность. "
-            "Красная зона — минус (цифра уменьшилась), синяя — плюс (выросла). "
-            "В норме левая часть (минус) и правая (плюс) образуют симметричные склоны (антисимметрия). "
-            "Когда происходит слом, поверхность резко изгибается, и вы видите, как волна меняет направление."
-        )
-        
-        # Считаем разности
-        Z_diffs = []
-        for t in range(len(path) - 1):
-            a = digits_of(path[t], k0)
-            b = digits_of(path[t+1], k0)
-            Z_diffs.append(b - a)
-        Z_diffs = np.array(Z_diffs)
-        
-        # Центрируем ось X
-        x_positions = np.arange(k0) - (k0 - 1) / 2
-        y_iterations = np.arange(len(Z_diffs))
-        
-        fig3 = go.Figure()
-        
-        # 1. Поверхность (если выбран режим Поле или Гибрид)
-        if "Surface" in mode or "Гибрид" in mode:
-            opacity_val = 0.7 if "Гибрид" in mode else 0.95
-            fig3.add_trace(go.Surface(
-                x=x_positions,
-                y=y_iterations,
-                z=Z_diffs,
-                colorscale='RdBu', 
-                cmid=0, 
-                opacity=opacity_val,
-                contours=dict(
-                    z=dict(show=True, usecolormap=True, highlightcolor="#444444", project=dict(z=True))
-                ),
-                colorbar=dict(title="Разность (Δ)")
-            ))
-        
-        # 2. Линии (если выбран режим Lines или Гибрид)
-        if "Lines" in mode or "Гибрид" in mode:
-            # Горизонтальные линии (значения разностей в каждой итерации)
-            for t in y_iterations:
-                fig3.add_trace(go.Scatter3d(
-                    x=x_positions, y=[t]*k0, z=Z_diffs[t],
+        if cycle_view and len(cyc) > 1:
+            st.caption(
+                "**Замыкание цикла / Cycle closure.** Ось Y закручена в окружность (полярный угол). "
+                "Каждый виток — это одна итерация цикла. Вы видите 'дрожание' — замкнутую 3D-орбиту, "
+                "которая показывает, как разности возвращаются в исходное состояние. Это и есть аттрактор."
+            )
+            # Берем только цикл (включая последний элемент для замыкания)
+            cycle_path = cyc + [cyc[0]]
+            Z_cyc = []
+            for t in range(len(cycle_path) - 1):
+                a = digits_of(cycle_path[t], k0)
+                b = digits_of(cycle_path[t+1], k0)
+                Z_cyc.append(b - a)
+            Z_cyc = np.array(Z_cyc)
+            
+            x_pos = np.arange(k0) - (k0 - 1) / 2
+            
+            fig_cyc = go.Figure()
+            
+            # Строим замкнутые кольца для каждой итерации
+            for t in range(len(Z_cyc)):
+                # Угол замыкается: от 0 до 2pi
+                theta = 2 * np.pi * t / len(Z_cyc)
+                
+                # Ось Y и Z теперь вращаются вокруг оси X (позиции)
+                y_ring = np.cos(theta) * 10
+                z_ring = Z_cyc[t] + np.sin(theta) * 5 # Накладываем смещение по Z
+                
+                fig_cyc.add_trace(go.Scatter3d(
+                    x=x_pos, y=[y_ring]*k0, z=z_ring,
                     mode='lines+markers',
-                    line=dict(color='black', width=3),
-                    marker=dict(size=4, color='black'),
-                    showlegend=False, hoverinfo='skip'
+                    line=dict(color='rgba(0,0,0,0.5)', width=3),
+                    marker=dict(size=5, color=['red' if v<0 else 'green' for v in Z_cyc[t]]),
+                    name=f"Шаг {t}"
                 ))
                 
-            # Вертикальные линии (связь одной позиции между итерациями)
-            for i in range(k0):
-                z_vals = [Z_diffs[t][i] for t in y_iterations]
-                fig3.add_trace(go.Scatter3d(
-                    x=[x_positions[i]]*len(y_iterations), y=y_iterations, z=z_vals,
-                    mode='lines',
-                    line=dict(color='black', width=2, dash='dot'),
-                    showlegend=False, hoverinfo='skip'
-                ))
+                # Соединяем соседние итерации (переход по кругу)
+                if t < len(Z_cyc) - 1:
+                    theta_next = 2 * np.pi * (t + 1) / len(Z_cyc)
+                    y_next = np.cos(theta_next) * 10
+                    z_next = Z_cyc[t+1] + np.sin(theta_next) * 5
+                    
+                    for i in range(k0):
+                        fig_cyc.add_trace(go.Scatter3d(
+                            x=[x_pos[i], x_pos[i]], y=[y_ring, y_next], z=[z_ring[i], z_next[i]],
+                            mode='lines',
+                            line=dict(color='gray', width=2, dash='dot'),
+                            showlegend=False, hoverinfo='skip'
+                        ))
 
-        fig3.update_layout(
-            scene=dict(
-                xaxis_title='Позиция от центра / Position from center',
-                yaxis_title='Итерация / Iteration',
-                zaxis_title='Разность (Δ) / Difference (Δ)',
-                zaxis=dict(range=[-9, 9]), 
-                camera=dict(eye=dict(x=1.5, y=-1.5, z=0.8))
-            ),
-            height=750, margin=dict(l=0, r=0, t=10, b=0)
-        )
-        st.plotly_chart(fig3, use_container_width=True)
+            fig_cyc.update_layout(
+                scene=dict(
+                    xaxis_title='Позиция / Position',
+                    yaxis_title='Фаза цикла / Cycle phase (Y)',
+                    zaxis_title='Разность (Δ) / Difference (Δ)',
+                    zaxis=dict(range=[-9, 9]),
+                    camera=dict(eye=dict(x=1.5, y=1.5, z=0.8))
+                ),
+                height=750, margin=dict(l=0, r=0, t=10, b=0)
+            )
+            st.plotly_chart(fig_cyc, use_container_width=True)
+
+        else:
+            # --- СТАНДАРТНЫЙ ЛИНЕЙНЫЙ РЕЖИМ (без цикла) ---
+            st.caption(
+                "Ось X — позиция цифры (центр числа = 0). Y — итерация. Z — разность. "
+                "Красная зона — минус (цифра уменьшилась), синяя — плюс (выросла). "
+                "Седловидная поверхность — геометрическое следствие антисимметрии."
+            )
+            
+            Z_diffs = []
+            for t in range(len(path) - 1):
+                a = digits_of(path[t], k0)
+                b = digits_of(path[t+1], k0)
+                Z_diffs.append(b - a)
+            Z_diffs = np.array(Z_diffs)
+            
+            x_positions = np.arange(k0) - (k0 - 1) / 2
+            y_iterations = np.arange(len(Z_diffs))
+            
+            fig3 = go.Figure()
+            
+            if "Surface" in mode or "Гибрид" in mode:
+                opacity_val = 0.7 if "Гибрид" in mode else 0.95
+                fig3.add_trace(go.Surface(
+                    x=x_positions, y=y_iterations, z=Z_diffs,
+                    colorscale='RdBu', cmid=0, opacity=opacity_val,
+                    contours=dict(z=dict(show=True, usecolormap=True, highlightcolor="#444444", project=dict(z=True))),
+                    colorbar=dict(title="Разность (Δ)")
+                ))
+            
+            if "Lines" in mode or "Гибрид" in mode:
+                for t in y_iterations:
+                    fig3.add_trace(go.Scatter3d(
+                        x=x_positions, y=[t]*k0, z=Z_diffs[t],
+                        mode='lines+markers',
+                        line=dict(color='black', width=3),
+                        marker=dict(size=4, color='black'),
+                        showlegend=False, hoverinfo='skip'
+                    ))
+                    
+                for i in range(k0):
+                    z_vals = [Z_diffs[t][i] for t in y_iterations]
+                    fig3.add_trace(go.Scatter3d(
+                        x=[x_positions[i]]*len(y_iterations), y=y_iterations, z=z_vals,
+                        mode='lines',
+                        line=dict(color='black', width=2, dash='dot'),
+                        showlegend=False, hoverinfo='skip'
+                    ))
+
+            fig3.update_layout(
+                scene=dict(
+                    xaxis_title='Позиция от центра / Position from center',
+                    yaxis_title='Итерация / Iteration',
+                    zaxis_title='Разность (Δ) / Difference (Δ)',
+                    zaxis=dict(range=[-9, 9]), 
+                    camera=dict(eye=dict(x=1.5, y=-1.5, z=0.8))
+                ),
+                height=750, margin=dict(l=0, r=0, t=10, b=0)
+            )
+            st.plotly_chart(fig3, use_container_width=True)
 # ================== ВКЛАДКА 2 ==================
 with tab2:
     st.header("Пространство n-значных чисел / Space of n-digit numbers")
