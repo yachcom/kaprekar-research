@@ -143,9 +143,9 @@ with tab1:
     path, ci, cyc = trajectory(n0, k0)
 
     c1, c2, c3 = st.columns(3)
-    c1.metric("Длина пути / Path length", len(path))
+    c1.metric("Длина пути / Path", len(path))
     c2.metric("Вход в цикл / Cycle entry", ci)
-    c3.metric("Длина цикла / Cycle length", len(cyc))
+    c3.metric("Длина цикла / Cycle len", len(cyc))
 
     if len(cyc) > 1:
         st.subheader("Полный цикл / Full cycle")
@@ -162,127 +162,184 @@ with tab1:
 
     st.subheader("3D-Динамика / 3D Dynamics")
     
-    col_switch1, col_switch2 = st.columns([1, 1])
-    with col_switch1:
-        view_mode = st.radio(
-            "Проекция / Projection:",
-            ("Поверхность (Surface)", "Объемное поле (Bundle)", "Замыкание цикла (Torus)"),
-            horizontal=True, key='mode3d'
-        )
-    with col_switch2:
-        st.write("") # для выравнивания
+    view_mode = st.radio(
+        "Проекция / Projection:",
+        ("Поверхность (Surface)", "Только линии (Lines)", "Спираль (Helix)", "Замыкание цикла (Torus)", "Расширение поля (Neighbors)"),
+        horizontal=True, key='mode3d'
+    )
 
     fig3 = go.Figure()
 
-    # --- РЕЖИМ 1: ОДИНОЧНАЯ ПОВЕРХНОСТЬ ---
+    # Считаем разности для всей траектории
+    Z_diffs = np.array([digits_of(path[t+1], k0) - digits_of(path[t], k0) for t in range(len(path)-1)])
+    x_positions = np.arange(k0) - (k0 - 1) / 2
+
+    # --- РЕЖИМ 1: ПОВЕРХНОСТЬ ---
     if view_mode == "Поверхность (Surface)":
-        st.caption("Разности одного числа. Седловидная форма — это антисимметрия.")
-        
-        Z_diffs = np.array([digits_of(path[t+1], k0) - digits_of(path[t], k0) for t in range(len(path)-1)])
-        x_positions = np.arange(k0) - (k0 - 1) / 2
-        
+        st.caption("Седловидная поверхность антисимметрии Δi = -Δ(k+1-i).")
         fig3.add_trace(go.Surface(
             x=x_positions, y=np.arange(len(Z_diffs)), z=Z_diffs,
-            colorscale='RdBu', cmid=0, opacity=0.85,
+            colorscale='RdBu', cmid=0, opacity=0.9,
             colorbar=dict(title="Разность (Δ)")
         ))
-        fig3.update_layout(scene=dict(
-            xaxis_title='Позиция / Pos', yaxis_title='Итерация / Iter', zaxis_title='Δ'
-        ))
+        fig3.update_layout(scene=dict(xaxis_title='Позиция', yaxis_title='Итерация', zaxis_title='Δ'))
 
-    # --- РЕЖИМ 2: ОБЪЕМНОЕ ПОЛЕ (СОСЕДИ) ---
-    elif view_mode == "Объемное поле (Bundle)":
-        st.caption(
-            "**Пучок соседних чисел.** Мы берем исходное число, оставляем его контейнеры (например, 12...50), "
-            "но меняем внутренние цифры. Каждая новая поверхность — это траектория 'соседа'. "
-            "Вместе они заполняют 'вырезанный кусок' и показывают истинное поле."
-        )
+    # --- РЕЖИМ 2: ТОЛЬКО ЛИНИИ ---
+    elif view_mode == "Только линии (Lines)":
+        st.caption("Траектории отдельных позиций. Видно, как каждая цифра 'прыгает'.")
+        for t in range(len(Z_diffs)):
+            colors = ['#d04040' if v < 0 else ('#30a030' if v > 0 else '#808080') for v in Z_diffs[t]]
+            fig3.add_trace(go.Scatter3d(
+                x=x_positions, y=[t]*k0, z=Z_diffs[t],
+                mode='lines+markers',
+                line=dict(color='black', width=3),
+                marker=dict(size=5, color=colors),
+                showlegend=False, hoverinfo='skip'
+            ))
+        for i in range(k0):
+            z_vals = [Z_diffs[t][i] for t in range(len(Z_diffs))]
+            fig3.add_trace(go.Scatter3d(
+                x=[x_positions[i]]*len(Z_diffs), y=np.arange(len(Z_diffs)), z=z_vals,
+                mode='lines', line=dict(color='gray', width=2, dash='dot'),
+                showlegend=False, hoverinfo='skip'
+            ))
+        fig3.update_layout(scene=dict(xaxis_title='Позиция', yaxis_title='Итерация', zaxis_title='Δ'))
+
+    # --- РЕЖИМ 3: СПИРАЛЬ (HELIX) ---
+    elif view_mode == "Спираль (Helix)":
+        st.caption("Ось итераций закручена в спираль. Разности наматываются на цилиндр.")
         
-        # Берем исходный контейнер
-        n_str = str(n0).zfill(k0)
-        start_c = n_str[:2]
-        end_c = n_str[-2:]
+        # Параметры спирали
+        turns = 2  # сколько оборотов на весь путь
+        theta = np.linspace(0, turns * 2 * np.pi, len(Z_diffs))
+        radius = 6
         
-        # Генерируем 5 соседей (просто меняя середину)
-        neighbors = []
-        import random
-        random.seed(42) # для воспроизводимости
-        for _ in range(5):
-            mid_len = k0 - 4
-            mid = ''.join(str(random.randint(0,9)) for _ in range(mid_len))
-            n_neg = int(start_c + mid + end_c)
-            if n_neg != n0:
-                neighbors.append(n_neg)
-                
-        # Добавляем исходное число
-        neighbors.insert(0, n0)
-        
-        # Рисуем поверхности для всех
-        colors = ['rgba(255,0,0,0.6)', 'rgba(0,0,255,0.4)', 'rgba(0,255,0,0.4)', 'rgba(255,165,0,0.4)', 'rgba(128,0,128,0.4)', 'rgba(0,255,255,0.4)']
-        
-        for idx, n_neigh in enumerate(neighbors):
-            p_n, _, _ = trajectory(n_neigh, k0)
-            Z_n = np.array([digits_of(p_n[t+1], k0) - digits_of(p_n[t], k0) for t in range(len(p_n)-1)])
-            x_pos = np.arange(k0) - (k0 - 1) / 2
+        for i in range(k0):
+            z_vals = [Z_diffs[t][i] for t in range(len(Z_diffs))]
+            # Добавляем разность к радиусу, чтобы она "выпирала"
+            r_vals = radius + z_vals 
             
-            # Исходное число делаем сплошным, остальные полупрозрачными
-            if idx == 0:
-                fig3.add_trace(go.Surface(
-                    x=x_pos, y=np.arange(len(Z_n)), z=Z_n,
-                    colorscale='RdBu', cmid=0, opacity=0.9, showscale=False,
-                    name=f"Исходное: {n_neigh}"
-                ))
-            else:
-                fig3.add_trace(go.Surface(
-                    x=x_pos, y=np.arange(len(Z_n)), z=Z_n,
-                    colorscale=[[0, colors[idx]], [1, colors[idx]]], # однотонный
-                    opacity=0.3, showscale=False,
-                    name=f"Сосед: {n_neigh}"
-                ))
-
+            x_helix = r_vals * np.cos(theta)
+            y_helix = r_vals * np.sin(theta)
+            
+            fig3.add_trace(go.Scatter3d(
+                x=x_helix, y=y_helix, z=np.arange(len(Z_diffs)),
+                mode='lines+markers',
+                line=dict(width=4),
+                marker=dict(size=4, color=['#d04040' if v < 0 else '#30a030' for v in z_vals]),
+                name=f"Позиция {i+1}"
+            ))
+            
         fig3.update_layout(scene=dict(
-            xaxis_title='Позиция / Pos', yaxis_title='Итерация / Iter', zaxis_title='Δ'
+            xaxis_title='X (Спираль)', yaxis_title='Y (Спираль)', zaxis_title='Итерация',
+            camera=dict(eye=dict(x=1.5, y=1.5, z=0.5))
         ))
 
-    # --- РЕЖИМ 3: ЗАМЫКАНИЕ (ТОР) ---
+    # --- РЕЖИМ 4: ТОР (TORUS) ---
     elif view_mode == "Замыкание цикла (Torus)":
-        st.caption(
-            "Ось Y (время) закручена в кольцо. Показаны только итерации цикла. "
-            "Вы видите, как разности образуют замкнутую поверхность (тор), по которой бегает волна."
-        )
-        
         if len(cyc) == 1:
-            st.info("Число сходится к неподвижной точке (цикл длины 1). Замыкания в тор нет.")
+            st.warning("Неподвижная точка. Цикл не замыкается в Тор.")
         else:
-            # Берем только цикл и замыкаем его
+            st.caption("Показан только цикл. Время свернуто в кольцо, образуя истинный тор.")
             cycle_path = cyc + [cyc[0]]
             Z_cyc = np.array([digits_of(cycle_path[t+1], k0) - digits_of(cycle_path[t], k0) for t in range(len(cycle_path)-1)])
             
-            # Закручиваем ось Y в окружность
-            theta = np.linspace(0, 2*np.pi, len(Z_cyc), endpoint=False)
-            x_pos = np.arange(k0) - (k0 - 1) / 2
+            # Формируем сетку для тора
+            T_len = len(Z_cyc)
+            theta = np.linspace(0, 2*np.pi, T_len)
             
-            X_mesh, Theta_mesh = np.meshgrid(x_pos, theta)
+            # Тороидальные координаты
+            R = 10 # радиус тора
+            # X = (R + Delta) * cos(theta)
+            # Y = (R + Delta) * sin(theta)
+            # Z = позиция цифры
             
-            # Преобразование координат
-            R = 5 # радиус тора
-            X_torus = (R + Z_cyc) * np.cos(Theta_mesh)
-            Y_torus = (R + Z_cyc) * np.sin(Theta_mesh)
-            Z_torus = X_mesh # позиция цифры теперь идет по оси Z
+            X_torus = np.zeros((T_len, k0))
+            Y_torus = np.zeros((T_len, k0))
+            Z_torus = np.zeros((T_len, k0))
             
+            for t in range(T_len):
+                for i in range(k0):
+                    # Разность добавляем к радиусу трубы
+                    r = R + Z_cyc[t][i] 
+                    X_torus[t, i] = r * np.cos(theta[t])
+                    Y_torus[t, i] = r * np.sin(theta[t])
+                    Z_torus[t, i] = x_positions[i] # Позиция цифры вдоль оси Z тора
+            
+            # Замыкаем поверхность (добавляем первую строку в конец)
+            X_torus = np.vstack([X_torus, X_torus[0]])
+            Y_torus = np.vstack([Y_torus, Y_torus[0]])
+            Z_torus = np.vstack([Z_torus, Z_torus[0]])
+            Z_color = np.vstack([Z_cyc, Z_cyc[0]])
+
             fig3.add_trace(go.Surface(
                 x=X_torus, y=Y_torus, z=Z_torus,
-                surfacecolor=Z_cyc, # Цвет зависит от разности
+                surfacecolor=Z_color,
                 colorscale='RdBu', cmid=0,
-                colorbar=dict(title="Разность (Δ)")
+                colorbar=dict(title="Δ")
             ))
             
             fig3.update_layout(scene=dict(
-                xaxis_title='X (Проекция)',
-                yaxis_title='Y (Проекция)',
-                zaxis_title='Позиция цифры / Position',
+                xaxis_title='X', yaxis_title='Y', zaxis_title='Позиция цифры',
                 camera=dict(eye=dict(x=1.5, y=1.5, z=0.8))
             ))
+
+    # --- РЕЖИМ 5: РАСШИРЕНИЕ ПОЛЯ (NEIGHBORS) ---
+    elif view_mode == "Расширение поля (Neighbors)":
+        st.caption(
+            "Алгоритм ищет числа, чья **левая** колонка разностей стыкуется с **правой** колонкой текущего числа. "
+            "Соединяя их, мы строим непрерывное поле в плоскости."
+        )
+        
+        # Мы будем искать число, у которого первая позиция (x_positions[0]) ведет себя так же,
+        # как последняя позиция (x_positions[-1]) нашего исходного числа.
+        
+        # Собираем правую колонку текущего числа (последняя позиция)
+        target_col = [Z_diffs[t][-1] for t in range(len(Z_diffs))]
+        
+        st.write(f"Ищем число, у которого крайняя левая разность образует последовательность: `{target_col[:5]}...`")
+        
+        # Простой поиск (для примера переберем 5000 чисел)
+        import random
+        random.seed(42)
+        found_n = None
+        
+        for _ in range(5000):
+            # Генерируем случайное число той же длины, начинающееся с правильных цифр
+            n_cand = random.randint(10**(k0-1), 10**k0 - 1)
+            p_cand, _, _ = trajectory(n_cand, k0)
+            # Проверяем только первые 5 шагов
+            z_cand = [digits_of(p_cand[t+1], k0) - digits_of(p_cand[t], k0) for t in range(min(5, len(p_cand)-1))]
+            
+            # Совпадает ли первая позиция с правой колонкой искомого?
+            if [z[0] for z in z_cand] == target_col[:5]:
+                found_n = n_cand
+                break
+                
+        if found_n:
+            st.success(f"Найдено число-сосед: **{found_n}**. Оно идеально продолжает поле влево!")
+            p2, _, _ = trajectory(found_n, k0)
+            Z2 = np.array([digits_of(p2[t+1], k0) - digits_of(p2[t], k0) for t in range(len(p2)-1)])
+            
+            # Сдвигаем координаты второго числа влево
+            offset = k0 - 1 # сдвиг на ширину числа
+            
+            # Исходное число
+            fig3.add_trace(go.Surface(
+                x=x_positions, y=np.arange(len(Z_diffs)), z=Z_diffs,
+                colorscale='RdBu', cmid=0, opacity=0.9, showscale=False
+            ))
+            # Сосед
+            fig3.add_trace(go.Surface(
+                x=x_positions - offset, y=np.arange(len(Z2)), z=Z2,
+                colorscale='RdBu', cmid=0, opacity=0.9, showscale=False
+            ))
+            
+            st.info("Вы видите, как правый край левой поверхности стыкуется с левым краем правой.")
+        else:
+            st.warning("Не удалось найти идеального соседа за 5000 попыток. (Алгоритм поиска можно усложнить).")
+            
+        fig3.update_layout(scene=dict(xaxis_title='Позиция', yaxis_title='Итерация', zaxis_title='Δ'))
 
     st.plotly_chart(fig3, use_container_width=True)
 # ================== ВКЛАДКА 2 ==================
