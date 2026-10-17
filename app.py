@@ -160,127 +160,129 @@ with tab1:
     st.subheader("Таблица разностей / Difference table")
     st.markdown(diff_table_html(path, k0), unsafe_allow_html=True)
 
-    st.subheader("3D-визуализация динамики / 3D Dynamics Visualization")
+    st.subheader("3D-Динамика / 3D Dynamics")
     
-    # --- ПЕРЕКЛЮЧАТЕЛЬ ---
-    view_mode = st.radio(
-        "Выберите тип проекции / Choose projection type:",
-        ("1. Волновое поле (Surface)", "2. Фазовое пространство (Тор / Torus)", "3. Спираль (Helix)"),
-        horizontal=True, key='mode3d'
-    )
-
-    # Подготовка данных для разностей (для режима Surface)
-    Z_diffs = []
-    for t in range(len(path) - 1):
-        a = digits_of(path[t], k0)
-        b = digits_of(path[t+1], k0)
-        Z_diffs.append(b - a)
-    Z_diffs = np.array(Z_diffs)
-    x_positions = np.arange(k0) - (k0 - 1) / 2
-    y_iterations = np.arange(len(Z_diffs))
+    col_switch1, col_switch2 = st.columns([1, 1])
+    with col_switch1:
+        view_mode = st.radio(
+            "Проекция / Projection:",
+            ("Поверхность (Surface)", "Объемное поле (Bundle)", "Замыкание цикла (Torus)"),
+            horizontal=True, key='mode3d'
+        )
+    with col_switch2:
+        st.write("") # для выравнивания
 
     fig3 = go.Figure()
 
-    # --- РЕЖИМ 1: СЕДЛОВИДНОЕ ПОЛЕ ---
-    if view_mode == "1. Волновое поле (Surface)":
-        st.caption(
-            "Показывает **скорость изменения (разности)**. Седловидная поверхность — следствие антисимметрии. "
-            "Изломы — это моменты заимствования (слом симметрии)."
-        )
+    # --- РЕЖИМ 1: ОДИНОЧНАЯ ПОВЕРХНОСТЬ ---
+    if view_mode == "Поверхность (Surface)":
+        st.caption("Разности одного числа. Седловидная форма — это антисимметрия.")
+        
+        Z_diffs = np.array([digits_of(path[t+1], k0) - digits_of(path[t], k0) for t in range(len(path)-1)])
+        x_positions = np.arange(k0) - (k0 - 1) / 2
+        
         fig3.add_trace(go.Surface(
-            x=x_positions, y=y_iterations, z=Z_diffs,
+            x=x_positions, y=np.arange(len(Z_diffs)), z=Z_diffs,
             colorscale='RdBu', cmid=0, opacity=0.85,
-            contours=dict(z=dict(show=True, usecolormap=True)),
             colorbar=dict(title="Разность (Δ)")
         ))
         fig3.update_layout(scene=dict(
-            xaxis_title='Позиция / Position', yaxis_title='Итерация / Iteration', zaxis_title='Δ'
+            xaxis_title='Позиция / Pos', yaxis_title='Итерация / Iter', zaxis_title='Δ'
         ))
 
-    # --- РЕЖИМ 2: ФАЗОВОЕ ПРОСТРАНСТВО (ИСТИННАЯ ФОРМА ЦИКЛА) ---
-    elif view_mode == "2. Фазовое пространство (Тор / Torus)":
+    # --- РЕЖИМ 2: ОБЪЕМНОЕ ПОЛЕ (СОСЕДИ) ---
+    elif view_mode == "Объемное поле (Bundle)":
         st.caption(
-            "Показывает **сами состояния чисел** в осях d1, d2, d3. "
-            "Каждая точка — это d-последовательность числа. Соединяя их, мы видим траекторию. "
-            "Если траектория замыкается в петлю — это и есть ваш **Тор (цикл)**. "
-            "Черная точка — начало, красная петля — цикл."
+            "**Пучок соседних чисел.** Мы берем исходное число, оставляем его контейнеры (например, 12...50), "
+            "но меняем внутренние цифры. Каждая новая поверхность — это траектория 'соседа'. "
+            "Вместе они заполняют 'вырезанный кусок' и показывают истинное поле."
         )
-        # Берем d-векторы всех чисел в траектории
-        d_path = [d_vec(n, k0) for n in path]
-        # Дополняем нулями до 3 координат
-        d_padded = [list(d[:3]) + [0]*(3-len(d[:3])) for d in d_path]
         
-        xs = [d[0] for d in d_padded]
-        ys = [d[1] for d in d_padded]
-        zs = [d[2] for d in d_padded]
-
-        # Рисуем весь путь
-        fig3.add_trace(go.Scatter3d(
-            x=xs, y=ys, z=zs,
-            mode='lines+markers',
-            line=dict(color='gray', width=3),
-            marker=dict(size=5, color=y_iterations, colorscale='Viridis', colorbar=dict(title="Итерация")),
-            name='Траектория'
-        ))
+        # Берем исходный контейнер
+        n_str = str(n0).zfill(k0)
+        start_c = n_str[:2]
+        end_c = n_str[-2:]
         
-        # Выделяем цикл (если он есть) жирной красной линией
-        if len(cyc) > 1:
-            c_start = ci
-            c_end = len(path) - 1
-            fig3.add_trace(go.Scatter3d(
-                x=xs[c_start:c_end+1], y=ys[c_start:c_end+1], z=zs[c_start:c_end+1],
-                mode='lines+markers',
-                line=dict(color='red', width=8),
-                marker=dict(size=8, color='red'),
-                name='Цикл (Тор)'
-            ))
+        # Генерируем 5 соседей (просто меняя середину)
+        neighbors = []
+        import random
+        random.seed(42) # для воспроизводимости
+        for _ in range(5):
+            mid_len = k0 - 4
+            mid = ''.join(str(random.randint(0,9)) for _ in range(mid_len))
+            n_neg = int(start_c + mid + end_c)
+            if n_neg != n0:
+                neighbors.append(n_neg)
+                
+        # Добавляем исходное число
+        neighbors.insert(0, n0)
+        
+        # Рисуем поверхности для всех
+        colors = ['rgba(255,0,0,0.6)', 'rgba(0,0,255,0.4)', 'rgba(0,255,0,0.4)', 'rgba(255,165,0,0.4)', 'rgba(128,0,128,0.4)', 'rgba(0,255,255,0.4)']
+        
+        for idx, n_neigh in enumerate(neighbors):
+            p_n, _, _ = trajectory(n_neigh, k0)
+            Z_n = np.array([digits_of(p_n[t+1], k0) - digits_of(p_n[t], k0) for t in range(len(p_n)-1)])
+            x_pos = np.arange(k0) - (k0 - 1) / 2
             
+            # Исходное число делаем сплошным, остальные полупрозрачными
+            if idx == 0:
+                fig3.add_trace(go.Surface(
+                    x=x_pos, y=np.arange(len(Z_n)), z=Z_n,
+                    colorscale='RdBu', cmid=0, opacity=0.9, showscale=False,
+                    name=f"Исходное: {n_neigh}"
+                ))
+            else:
+                fig3.add_trace(go.Surface(
+                    x=x_pos, y=np.arange(len(Z_n)), z=Z_n,
+                    colorscale=[[0, colors[idx]], [1, colors[idx]]], # однотонный
+                    opacity=0.3, showscale=False,
+                    name=f"Сосед: {n_neigh}"
+                ))
+
         fig3.update_layout(scene=dict(
-            xaxis_title='d1', yaxis_title='d2', zaxis_title='d3'
+            xaxis_title='Позиция / Pos', yaxis_title='Итерация / Iter', zaxis_title='Δ'
         ))
 
-    # --- РЕЖИМ 3: СПИРАЛЬ (ВРЕМЯ ЗАКРУЧЕНО В КОЛЬЦО) ---
-    elif view_mode == "3. Спираль (Helix)":
+    # --- РЕЖИМ 3: ЗАМЫКАНИЕ (ТОР) ---
+    elif view_mode == "Замыкание цикла (Torus)":
         st.caption(
-            "Ось времени (итерации) закручена в спираль. По оси Z — значение разности. "
-            "Вы видите, как волна разностей распространяется от первой итерации к последней. "
-            "Цикл превращается в повторяющуюся винтовую линию."
+            "Ось Y (время) закручена в кольцо. Показаны только итерации цикла. "
+            "Вы видите, как разности образуют замкнутую поверхность (тор), по которой бегает волна."
         )
         
-        # Формируем спираль
-        # Угол зависит от итерации (1 оборот на каждые 5 итераций)
-        theta = y_iterations * (2 * np.pi / 5) 
-        
-        # Радиус делаем зависящим от позиции, чтобы разнести линии
-        radius = 5 
-        
-        fig3 = go.Figure()
-
-        # Для каждой позиции цифры (от 1 до k) рисуем свою спираль
-        for i in range(k0):
-            z_vals = [Z_diffs[t][i] for t in y_iterations]
-            # Смещаем угол для каждой позиции, чтобы линии не сливались
-            x_helix = radius * np.cos(theta + i * 0.5) 
-            y_helix = radius * np.sin(theta + i * 0.5)
+        if len(cyc) == 1:
+            st.info("Число сходится к неподвижной точке (цикл длины 1). Замыкания в тор нет.")
+        else:
+            # Берем только цикл и замыкаем его
+            cycle_path = cyc + [cyc[0]]
+            Z_cyc = np.array([digits_of(cycle_path[t+1], k0) - digits_of(cycle_path[t], k0) for t in range(len(cycle_path)-1)])
             
-            fig3.add_trace(go.Scatter3d(
-                x=x_helix, y=y_helix, z=z_vals,
-                mode='lines+markers',
-                line=dict(width=3, color=f'rgba({i*30}, {100+i*15}, {200-i*20}, 0.8)'),
-                marker=dict(size=4, color=['red' if v<0 else 'green' for v in z_vals]),
-                name=f"Позиция {i+1}"
+            # Закручиваем ось Y в окружность
+            theta = np.linspace(0, 2*np.pi, len(Z_cyc), endpoint=False)
+            x_pos = np.arange(k0) - (k0 - 1) / 2
+            
+            X_mesh, Theta_mesh = np.meshgrid(x_pos, theta)
+            
+            # Преобразование координат
+            R = 5 # радиус тора
+            X_torus = (R + Z_cyc) * np.cos(Theta_mesh)
+            Y_torus = (R + Z_cyc) * np.sin(Theta_mesh)
+            Z_torus = X_mesh # позиция цифры теперь идет по оси Z
+            
+            fig3.add_trace(go.Surface(
+                x=X_torus, y=Y_torus, z=Z_torus,
+                surfacecolor=Z_cyc, # Цвет зависит от разности
+                colorscale='RdBu', cmid=0,
+                colorbar=dict(title="Разность (Δ)")
             ))
-
-        fig3.update_layout(
-            scene=dict(
-                xaxis_title='Угол (Время) / Angle',
-                yaxis_title='Угол (Время) / Angle',
-                zaxis_title='Разность (Δ) / Difference',
-                zaxis=dict(range=[-9, 9]),
-                camera=dict(eye=dict(x=1.5, y=1.5, z=0.5))
-            ),
-            height=750
-        )
+            
+            fig3.update_layout(scene=dict(
+                xaxis_title='X (Проекция)',
+                yaxis_title='Y (Проекция)',
+                zaxis_title='Позиция цифры / Position',
+                camera=dict(eye=dict(x=1.5, y=1.5, z=0.8))
+            ))
 
     st.plotly_chart(fig3, use_container_width=True)
 # ================== ВКЛАДКА 2 ==================
