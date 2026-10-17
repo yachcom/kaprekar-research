@@ -176,7 +176,7 @@ with tab1:
 
     # --- РЕЖИМ 1: ПОВЕРХНОСТЬ ---
     if view_mode == "Поверхность (Surface)":
-        st.caption("Седловидная поверхность антисимметрии Δi = -Δ(k+1-i).")
+        st.caption("Классическая седловидная поверхность антисимметрии.")
         fig3.add_trace(go.Surface(
             x=x_positions, y=np.arange(len(Z_diffs)), z=Z_diffs,
             colorscale='RdBu', cmid=0, opacity=0.9,
@@ -186,7 +186,7 @@ with tab1:
 
     # --- РЕЖИМ 2: ТОЛЬКО ЛИНИИ ---
     elif view_mode == "Только линии (Lines)":
-        st.caption("Траектории отдельных позиций. Видно, как каждая цифра 'прыгает'.")
+        st.caption("Отдельные траектории. Хорошо видно, как 'прыгают' отдельные позиции цифр.")
         for t in range(len(Z_diffs)):
             colors = ['#d04040' if v < 0 else ('#30a030' if v > 0 else '#808080') for v in Z_diffs[t]]
             fig3.add_trace(go.Scatter3d(
@@ -207,17 +207,15 @@ with tab1:
 
     # --- РЕЖИМ 3: СПИРАЛЬ (HELIX) ---
     elif view_mode == "Спираль (Helix)":
-        st.caption("Ось итераций закручена в спираль. Разности наматываются на цилиндр.")
+        st.caption("Ось итераций закручена в спираль (как пружина). Каждая линия — позиция цифры.")
         
-        # Параметры спирали
-        turns = 2  # сколько оборотов на весь путь
+        turns = 2
         theta = np.linspace(0, turns * 2 * np.pi, len(Z_diffs))
-        radius = 6
+        radius = 10
         
         for i in range(k0):
-            z_vals = [Z_diffs[t][i] for t in range(len(Z_diffs))]
-            # Добавляем разность к радиусу, чтобы она "выпирала"
-            r_vals = radius + z_vals 
+            z_vals = np.array([Z_diffs[t][i] for t in range(len(Z_diffs))]) # Исправлено на np.array
+            r_vals = radius + z_vals
             
             x_helix = r_vals * np.cos(theta)
             y_helix = r_vals * np.sin(theta)
@@ -225,14 +223,14 @@ with tab1:
             fig3.add_trace(go.Scatter3d(
                 x=x_helix, y=y_helix, z=np.arange(len(Z_diffs)),
                 mode='lines+markers',
-                line=dict(width=4),
-                marker=dict(size=4, color=['#d04040' if v < 0 else '#30a030' for v in z_vals]),
+                line=dict(width=3),
+                marker=dict(size=3, color=['#d04040' if v < 0 else '#30a030' for v in z_vals]),
                 name=f"Позиция {i+1}"
             ))
             
         fig3.update_layout(scene=dict(
             xaxis_title='X (Спираль)', yaxis_title='Y (Спираль)', zaxis_title='Итерация',
-            camera=dict(eye=dict(x=1.5, y=1.5, z=0.5))
+            camera=dict(eye=dict(x=1.5, y=1.5, z=0.8))
         ))
 
     # --- РЕЖИМ 4: ТОР (TORUS) ---
@@ -240,104 +238,84 @@ with tab1:
         if len(cyc) == 1:
             st.warning("Неподвижная точка. Цикл не замыкается в Тор.")
         else:
-            st.caption("Показан только цикл. Время свернуто в кольцо, образуя истинный тор.")
+            st.caption("Цикл свернут в истинный Тор (бублик). Ось времени (итерации) и ось позиций свернуты в кольца, а разности образуют рельеф.")
             cycle_path = cyc + [cyc[0]]
             Z_cyc = np.array([digits_of(cycle_path[t+1], k0) - digits_of(cycle_path[t], k0) for t in range(len(cycle_path)-1)])
             
-            # Формируем сетку для тора
-            T_len = len(Z_cyc)
-            theta = np.linspace(0, 2*np.pi, T_len)
+            # Параметры тора
+            u = np.linspace(0, 2*np.pi, len(Z_cyc))   # Ось времени
+            v = np.linspace(0, 2*np.pi, k0)           # Ось позиций
+            u, v = np.meshgrid(u, v, indexing='ij')
             
-            # Тороидальные координаты
-            R = 10 # радиус тора
-            # X = (R + Delta) * cos(theta)
-            # Y = (R + Delta) * sin(theta)
-            # Z = позиция цифры
+            R = 10 # Большой радиус
+            # Вставляем разности как отклонение радиуса
+            r = R + Z_cyc
             
-            X_torus = np.zeros((T_len, k0))
-            Y_torus = np.zeros((T_len, k0))
-            Z_torus = np.zeros((T_len, k0))
+            X_torus = r * np.cos(u)
+            Y_torus = r * np.sin(u)
+            Z_torus = (r - R) * np.sin(v) # Создаем толщину бублика
             
-            for t in range(T_len):
-                for i in range(k0):
-                    # Разность добавляем к радиусу трубы
-                    r = R + Z_cyc[t][i] 
-                    X_torus[t, i] = r * np.cos(theta[t])
-                    Y_torus[t, i] = r * np.sin(theta[t])
-                    Z_torus[t, i] = x_positions[i] # Позиция цифры вдоль оси Z тора
-            
-            # Замыкаем поверхность (добавляем первую строку в конец)
-            X_torus = np.vstack([X_torus, X_torus[0]])
-            Y_torus = np.vstack([Y_torus, Y_torus[0]])
-            Z_torus = np.vstack([Z_torus, Z_torus[0]])
-            Z_color = np.vstack([Z_cyc, Z_cyc[0]])
-
             fig3.add_trace(go.Surface(
                 x=X_torus, y=Y_torus, z=Z_torus,
-                surfacecolor=Z_color,
+                surfacecolor=Z_cyc,
                 colorscale='RdBu', cmid=0,
                 colorbar=dict(title="Δ")
             ))
             
             fig3.update_layout(scene=dict(
-                xaxis_title='X', yaxis_title='Y', zaxis_title='Позиция цифры',
+                xaxis_title='X (Тор)', yaxis_title='Y (Тор)', zaxis_title='Рельеф (Δ)',
                 camera=dict(eye=dict(x=1.5, y=1.5, z=0.8))
             ))
 
     # --- РЕЖИМ 5: РАСШИРЕНИЕ ПОЛЯ (NEIGHBORS) ---
     elif view_mode == "Расширение поля (Neighbors)":
         st.caption(
-            "Алгоритм ищет числа, чья **левая** колонка разностей стыкуется с **правой** колонкой текущего числа. "
-            "Соединяя их, мы строим непрерывное поле в плоскости."
+            "Алгоритм ищет число, у которого **первый столбец** разностей совпадает "
+            "с **последним столбцом** текущего числа, и ставит его слева."
         )
         
-        # Мы будем искать число, у которого первая позиция (x_positions[0]) ведет себя так же,
-        # как последняя позиция (x_positions[-1]) нашего исходного числа.
+        # Правый столбец текущего числа
+        target_col = Z_diffs[:, -1]
         
-        # Собираем правую колонку текущего числа (последняя позиция)
-        target_col = [Z_diffs[t][-1] for t in range(len(Z_diffs))]
+        st.write(f"Ищем число, у которого крайняя левая разность образует последовательность: `{target_col[:5].tolist()}...`")
         
-        st.write(f"Ищем число, у которого крайняя левая разность образует последовательность: `{target_col[:5]}...`")
-        
-        # Простой поиск (для примера переберем 5000 чисел)
         import random
         random.seed(42)
         found_n = None
         
-        for _ in range(5000):
-            # Генерируем случайное число той же длины, начинающееся с правильных цифр
+        # Поиск соседа
+        for _ in range(10000):
             n_cand = random.randint(10**(k0-1), 10**k0 - 1)
             p_cand, _, _ = trajectory(n_cand, k0)
-            # Проверяем только первые 5 шагов
-            z_cand = [digits_of(p_cand[t+1], k0) - digits_of(p_cand[t], k0) for t in range(min(5, len(p_cand)-1))]
+            # Смотрим на первые 5 шагов кандидата
+            z_cand_first_col = [digits_of(p_cand[t+1], k0)[0] - digits_of(p_cand[t], k0)[0] for t in range(min(5, len(p_cand)-1))]
             
-            # Совпадает ли первая позиция с правой колонкой искомого?
-            if [z[0] for z in z_cand] == target_col[:5]:
+            # Сравниваем
+            if np.array_equal(z_cand_first_col, target_col[:5]):
                 found_n = n_cand
                 break
                 
         if found_n:
-            st.success(f"Найдено число-сосед: **{found_n}**. Оно идеально продолжает поле влево!")
+            st.success(f"Найдено число-сосед: **{found_n}**. Оно стыкуется правым краем с левым краем исходного.")
             p2, _, _ = trajectory(found_n, k0)
             Z2 = np.array([digits_of(p2[t+1], k0) - digits_of(p2[t], k0) for t in range(len(p2)-1)])
             
-            # Сдвигаем координаты второго числа влево
-            offset = k0 - 1 # сдвиг на ширину числа
+            offset = k0 - 1
             
-            # Исходное число
+            # Исходное число (справа)
             fig3.add_trace(go.Surface(
                 x=x_positions, y=np.arange(len(Z_diffs)), z=Z_diffs,
                 colorscale='RdBu', cmid=0, opacity=0.9, showscale=False
             ))
-            # Сосед
+            # Сосед (слева)
             fig3.add_trace(go.Surface(
                 x=x_positions - offset, y=np.arange(len(Z2)), z=Z2,
                 colorscale='RdBu', cmid=0, opacity=0.9, showscale=False
             ))
             
-            st.info("Вы видите, как правый край левой поверхности стыкуется с левым краем правой.")
+            st.info("Стыковка произошла успешно. Правая часть левой поверхности (Z2) совпадает с левой частью правой (Z_diffs).")
         else:
-            st.warning("Не удалось найти идеального соседа за 5000 попыток. (Алгоритм поиска можно усложнить).")
+            st.warning("Не удалось найти идеального соседа среди 10000 случайных чисел (нужно больше перебора).")
             
         fig3.update_layout(scene=dict(xaxis_title='Позиция', yaxis_title='Итерация', zaxis_title='Δ'))
 
