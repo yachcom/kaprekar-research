@@ -268,8 +268,14 @@ with tab2:
                     mode='lines+markers', line=dict(color='red', width=8), marker=dict(size=9, color='red'),
                     text=[f"итер {p[3]}: {p[4]}" for p in cyc_pts], hoverinfo='text', name='цикл'))
 
-        fig.update_layout(height=750, scene=dict(xaxis_title='d₁', yaxis_title='d₂', zaxis_title='d₃'))
+        fig.update_layout(height=750, scene=dict(xaxis_title='d1', yaxis_title='d2', zaxis_title='d3'))
         st.plotly_chart(fig, use_container_width=True)
+
+        st.info(
+            "**Почему пирамида?** Точки удовлетворяют d1 >= d2 >= d3 >= 0 — это математическое "
+            "следствие того, что d_i — разности убывающих цифр. Для k=3 (только d1) — линия; "
+            "для k=4,5 (d1, d2) — плоский треугольник; для k>=6 (d1, d2, d3) — пирамида."
+        )
 
 # ================== ВКЛАДКА 3 ==================
 with tab3:
