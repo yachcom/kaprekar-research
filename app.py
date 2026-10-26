@@ -5,6 +5,7 @@ import numpy as np
 import plotly.graph_objects as go
 from itertools import combinations_with_replacement
 from math import comb
+import random
 
 st.set_page_config(layout="wide", page_title="Kaprekar Dynamics")
 
@@ -33,7 +34,8 @@ def _ns(x):
     return int(x) if x <= 10 else int(x) - 9
 
 def S_of(n, k):
-    d = digits_of(n, k); m = k // 2
+    d = digits_of(n, k)
+    m = k // 2
     if k % 2 == 0:
         return tuple(_ns(d[m-1-i] + d[m+i]) for i in range(m))
     return tuple([int(d[m])] + [_ns(d[m-i] + d[m+i]) for i in range(1, m+1)])
@@ -43,7 +45,7 @@ def trajectory_table_html(path, k, ci, cyc):
             '<tr style="background:#f0f0f0;">'
             '<th style="padding:6px;border:1px solid #ccc;">Итерация / Iter</th>'
             '<th style="padding:6px;border:1px solid #ccc;">Число / Number</th>'
-            '<th style="padding:6px;border:1px solid #ccc;">S (центр→край) / S</th>'
+            '<th style="padding:6px;border:1px solid #ccc;">S (центр-край) / S</th>'
             '<th style="padding:6px;border:1px solid #ccc;">d-последовательность / d-seq</th>'
             '</tr>')
     for i, n in enumerate(path):
@@ -67,12 +69,12 @@ def trajectory_table_html(path, k, ci, cyc):
 def diff_table_html(path, k):
     html = ('<table style="width:100%;border-collapse:collapse;font-family:monospace;font-size:13px;">'
             '<tr style="background:#f0f0f0;">'
-            '<th style="padding:6px;border:1px solid #ccc;">Итерация</th>'
-            '<th style="padding:6px;border:1px solid #ccc;">От</th>'
-            '<th style="padding:6px;border:1px solid #ccc;">К</th>'
-            '<th style="padding:6px;border:1px solid #ccc;">Разности цифр</th>'
-            '<th style="padding:6px;border:1px solid #ccc;">Нарушение</th>'
-            '<th style="padding:6px;border:1px solid #ccc;">Центр равны</th>'
+            '<th style="padding:6px;border:1px solid #ccc;">Итерация / Iter</th>'
+            '<th style="padding:6px;border:1px solid #ccc;">От / From</th>'
+            '<th style="padding:6px;border:1px solid #ccc;">К / To</th>'
+            '<th style="padding:6px;border:1px solid #ccc;">Разности цифр / Differences</th>'
+            '<th style="padding:6px;border:1px solid #ccc;">Нарушение / Violation</th>'
+            '<th style="padding:6px;border:1px solid #ccc;">Центр равны / Center equal</th>'
             '</tr>')
     for t in range(len(path) - 1):
         a_s, b_s = str(path[t]).zfill(k), str(path[t+1]).zfill(k)
@@ -94,9 +96,9 @@ def diff_table_html(path, k):
                  f'<td style="padding:4px;border:1px solid #ccc;text-align:center;">{path[t+1]}</td>'
                  f'<td style="padding:4px;border:1px solid #ccc;">{chips}</td>'
                  f'<td style="padding:4px;border:1px solid #ccc;text-align:center;">'
-                 f'{"⚠️" if viol else "—"}</td>'
+                 f'{"(!)" if viol else "-"}</td>'
                  f'<td style="padding:4px;border:1px solid #ccc;text-align:center;">'
-                 f'{"✓" if ce else "—"}</td></tr>')
+                 f'{"+" if ce else "-"}</td></tr>')
     return html + '</table>'
 
 @st.cache_data(show_spinner=False)
@@ -170,7 +172,6 @@ with tab1:
 
     fig3 = go.Figure()
 
-    # Считаем разности для всей траектории
     Z_diffs = np.array([digits_of(path[t+1], k0) - digits_of(path[t], k0) for t in range(len(path)-1)])
     x_positions = np.arange(k0) - (k0 - 1) / 2
 
@@ -215,7 +216,7 @@ with tab1:
         
         for i in range(k0):
             z_vals = np.array([Z_diffs[t][i] for t in range(len(Z_diffs))])
-            r_vals = radius + z_vals  # Сдвигаем, чтобы не было отрицательного радиуса
+            r_vals = radius + z_vals
             
             x_helix = r_vals * np.cos(theta)
             y_helix = r_vals * np.sin(theta)
@@ -240,11 +241,9 @@ with tab1:
         else:
             st.caption("Только итерации цикла. Гладкий Тор (бублик), где разности образуют рельеф.")
             
-            # Изолируем только цикл
             cycle_path = cyc + [cyc[0]]
             Z_cyc = np.array([digits_of(cycle_path[t+1], k0) - digits_of(cycle_path[t], k0) for t in range(len(cycle_path)-1)])
             
-            # Замыкаем матрицу в обоих направлениях
             Z_pad = np.vstack([Z_cyc, Z_cyc[0:1]]) 
             Z_pad = np.hstack([Z_pad, Z_pad[:, 0:1]])
             
@@ -252,10 +251,9 @@ with tab1:
             v = np.linspace(0, 2 * np.pi, Z_pad.shape[1])
             U, V = np.meshgrid(u, v, indexing='ij')
             
-            R = 15 # Большой радиус тора (расстояние от центра дырки)
-            r_base = 5 # Базовый малый радиус
+            R = 15
+            r_base = 5
             
-            # Рельеф строится путем изменения малого радиуса
             r = r_base + Z_pad 
             
             X_torus = (R + r * np.cos(V)) * np.cos(U)
@@ -277,8 +275,8 @@ with tab1:
     # --- РЕЖИМ 5: РАСШИРЕНИЕ ПОЛЯ (NEIGHBORS) ---
     elif view_mode == "Расширение поля (Neighbors)":
         st.caption(
-            "Поиск числа-соседа слева. Берем **левый столбец** разностей только из **цикла** (без верхней стабилизации). "
-            "Ищем число, у которого **правый столбец** (разность последней цифры) дает такую же последовательность."
+            "Поиск числа-соседа слева. Берем левый столбец разностей только из цикла. "
+            "Ищем число, у которого правый столбец (разность последней цифры) дает такую же последовательность."
         )
         
         if len(cyc) <= 1:
@@ -287,12 +285,10 @@ with tab1:
             cycle_path = cyc + [cyc[0]]
             Z_cyc = np.array([digits_of(cycle_path[t+1], k0) - digits_of(cycle_path[t], k0) for t in range(len(cycle_path)-1)])
             
-            # Левый столбец (разность первой цифры в цикле)
             target_col = Z_cyc[:, 0]
             st.write(f"Разности первой цифры в цикле: `{target_col.tolist()}`")
             st.write("Ищем число-сосед, у которого разность последней цифры даст такую же последовательность...")
             
-            # Восстанавливаем возможные последние цифры
             valid_lasts = []
             for start_L in range(10):
                 seq = [start_L]
@@ -305,7 +301,7 @@ with tab1:
                         possible = False
                         break
                 if possible:
-                    valid_lasts.append(seq[:-1]) # убираем замыкающую
+                    valid_lasts.append(seq[:-1])
                     
             if not valid_lasts:
                 st.error("Невозможно построить последовательность последних цифр для такого левого столбца.")
@@ -314,16 +310,11 @@ with tab1:
                 st.write("Сканируем пространство чисел на наличие цикла с такими разностями...")
                 
                 found_n = None
-                # Оптимизированный перебор: генерируем числа, у которых конец совпадает с valid_lasts
-                import random
                 random.seed(42)
                 
                 for _ in range(50000):
-                    # Берем случайную валидную последовательность последних цифр
                     v_seq = random.choice(valid_lasts)
                     last_0 = v_seq[0]
-                    # По правилу контейнеров: first + last = 10 (или 9). 
-                    # Возьмем 10 для примера (если 10 не подходит, попробуем 9)
                     first_0 = 10 - last_0 if (10 - last_0) <= 9 else 9 - last_0
                     if first_0 <= 0: continue
                     
@@ -334,7 +325,6 @@ with tab1:
                     if len(cyc_cand) <= 1:
                         continue
                         
-                    # Проверяем правый столбец на цикле
                     cyc_path_cand = cyc_cand + [cyc_cand[0]]
                     z_cand = [digits_of(cyc_path_cand[t+1], k0)[-1] - digits_of(cyc_path_cand[t], k0)[-1] for t in range(len(cyc_cand))]
                     
@@ -344,13 +334,10 @@ with tab1:
                         
                 if found_n:
                     st.success(f"Найдено число-сосед: **{found_n}**. Оно идеально стыкуется с исходным числом на уровне цикла!")
-                    # Рисуем стыковку (только циклы)
-                    # Исходный цикл
                     fig3.add_trace(go.Surface(
                         x=x_positions, y=np.arange(len(Z_cyc)), z=Z_cyc,
                         colorscale='RdBu', cmid=0, opacity=0.9, showscale=False
                     ))
-                    # Цикл соседа
                     p2, _, cyc2 = trajectory(found_n, k0)
                     cyc2_path = cyc2 + [cyc2[0]]
                     Z2 = np.array([digits_of(cyc2_path[t+1], k0) - digits_of(cyc2_path[t], k0) for t in range(len(cyc2))])
@@ -366,8 +353,8 @@ with tab1:
                     
             fig3.update_layout(scene=dict(xaxis_title='Позиция (слева - сосед)', yaxis_title='Итерация цикла', zaxis_title='Δ'))
 
-    # Используем уникальный ключ, чтобы React не сходил с ума при переключении вкладок
     st.plotly_chart(fig3, use_container_width=True, key=f"plot_{view_mode}")
+
 # ================== ВКЛАДКА 2 ==================
 with tab2:
     st.header("Пространство n-значных чисел / Space of n-digit numbers")
@@ -403,7 +390,7 @@ with tab2:
 
         st.subheader("Циклы и неподвижные числа / Cycles and fixed points")
         total = sum(info['count'] for info in cycles.values())
-        rows = [{"Цикл": " → ".join(str(x) for x in info['cycle']),
+        rows = [{"Цикл": " -> ".join(str(x) for x in info['cycle']),
                  "Длина": len(info['cycle']),
                  "Классов": info['count'],
                  "Доля": f"{info['count']/total*100:.2f}%"}
@@ -456,7 +443,6 @@ with tab3:
     if st.button("Сравнить / Compare", key='b3'):
         fig = go.Figure()
         for k in range(4, 11):
-            # Ищем все числа с таким контейнером
             found = False
             for combo in combinations_with_replacement(range(10), k):
                 if len(set(combo)) == 1: continue
@@ -465,7 +451,6 @@ with tab3:
                 if n_str.startswith(cont_start) and n_str.endswith(cont_end):
                     path, ci, cyc = trajectory(n, k)
                     d_path = [d_vec(num, k) for num in path]
-                    # Найдем длину максимальной d-последовательности для оси X
                     max_m = max(len(d) for d in d_path)
                     for t, d in enumerate(d_path):
                         pad_d = list(d) + [0]*(max_m - len(d))
@@ -477,7 +462,7 @@ with tab3:
                             name=f"k={k}, итер {t}"
                         ))
                     found = True
-                    break # Берем первое попавшееся для примера
+                    break
             if not found:
                 st.write(f"Для k={k} контейнер {cont_start}...{cont_end} не найден в классе.")
 
