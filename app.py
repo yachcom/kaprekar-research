@@ -568,4 +568,4 @@ with tab4:
                 if len(neighbors) > 10:
                     st.caption(f"... и ещё {len(neighbors) - 10} соседей.")
             else:
-                st.warning("Для данного цикла соседей нет (уникальная сигнатура).")st.plotly_chart(fig, use_container_width=True)
+                st.warning("Для данного цикла соседей нет (уникальная сигнатура).")
